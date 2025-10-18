@@ -1,0 +1,119 @@
+/* 🌊 Background gradient for the full page */
+body {
+  background: linear-gradient(135deg, #1e3c72, #2a5298);
+  font-family: "Poppins", sans-serif;
+  color: #fff;
+}
+
+/* 🪄 Card styling */
+.card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(12px);
+  border-radius: 18px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
+  transition: transform 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+}
+
+/* 🧊 Input box design */
+.form-control {
+  background: whitesmoke;
+  border: none;
+  border-radius: 10px;
+  padding: 14px 14px 14px 14px;
+  color: #0b2239;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 🪶 Placeholder floating animation */
+.form-control::placeholder {
+  color: #888;
+  transition: all 0.2s ease;
+}
+
+.form-control:focus::placeholder {
+  transform: translateY(-14px);
+  font-size: 0.8rem;
+  color: #4a90e2;
+}
+
+.form-control:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(41, 121, 255, 0.4);
+  background: #fff;
+}
+
+/* ✨ Label */
+.form-label {
+  font-weight: 600;
+  color: #f8f9fa;
+  margin-bottom: 6px;
+  display: block;
+}
+
+/* 🧾 Textarea */
+textarea.form-control {
+  resize: none;
+}
+
+/* 🟢 Button animation */
+.btn-outline-success {
+  background: #1e88e5;
+  color: #fff;
+  border: none;
+  transition: all 0.3s ease-in-out;
+  border-radius: 12px;
+}
+
+.btn-outline-success:hover {
+  background: linear-gradient(90deg, #42a5f5, #1e88e5);
+  transform: scale(1.02);
+  box-shadow: 0 4px 15px rgba(66, 165, 245, 0.5);
+}
+
+/* ⚙️ Progress bar */
+.progress {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.progress-bar {
+  border-radius: 10px;
+}
+
+/* 🌫️ Dropdown area */
+.dropdown-container .form-select {
+  background: whitesmoke;
+  border: none;
+  border-radius: 10px;
+  box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.1);
+}
+
+.dropdown-container .form-select:hover {
+  box-shadow: 0 0 5px rgba(41, 121, 255, 0.5);
+}
+
+/* ⚪ Scrollbar inside dropdown */
+.dropdown-container div::-webkit-scrollbar {
+  width: 6px;
+}
+.dropdown-container div::-webkit-scrollbar-thumb {
+  background: #4a90e2;
+  border-radius: 10px;
+}
+
+/* ✨ Text style inside card */
+.text-primary {
+  color: #e3f2fd !important;
+}
+.text-dark {
+  color: #fff !important;
+}
+.text-muted {
+  color: #cfd8dc !important;
+}
