@@ -3,8 +3,6 @@ import axios from "axios";
 import "bootstrap/dist/css/bootstrap.min.css";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import "../Pages/InputForm.css";
-
 
 const API = "http://localhost:5000";
 
@@ -29,51 +27,50 @@ export default function InputForm() {
       .catch(() => setIp("Unavailable"));
   }, []);
 
- useEffect(() => {
-  if (!username.trim()) {
-    setEmp(null);
-    return;
-  }
-
-  const timer = setTimeout(async () => {
-    try {
-      setLoading(true);
-      const { data } = await axios.get(`${API}/api/employees/find`, {
-        params: { key: username },
-      });
-
-      // ✅ If employee exists (has emp_id)
-      if (data && data.emp_id) {
-        setEmp(data);
-
-        // Set default reporting_to if empty
-        if (data.reporting_to && !form.reporting_to.length) {
-          setForm((prev) => ({
-            ...prev,
-            reporting_to: [data.reporting_to],
-          }));
-        }
-
-        // ✅ Show success toast only for valid employee
-        toast.success(`Employee data loaded for ${data.full_name}`, {
-          autoClose: 1000,
-          theme: "colored",
-        });
-      } else {
-        // ❌ If not found — do nothing, no alert
-        setEmp(null);
-      }
-    } catch {
-      // ❌ If API fails — do nothing silently
+  useEffect(() => {
+    if (!username.trim()) {
       setEmp(null);
-    } finally {
-      setLoading(false);
+      return;
     }
-  }, 500); // short debounce
 
-  return () => clearTimeout(timer);
-}, [username]);
+    const timer = setTimeout(async () => {
+      try {
+        setLoading(true);
+        const { data } = await axios.get(`${API}/api/employees/find`, {
+          params: { key: username },
+        });
 
+        // ✅ If employee exists (has emp_id)
+        if (data && data.emp_id) {
+          setEmp(data);
+
+          // Set default reporting_to if empty
+          if (data.reporting_to && !form.reporting_to.length) {
+            setForm((prev) => ({
+              ...prev,
+              reporting_to: [data.reporting_to],
+            }));
+          }
+
+          // ✅ Show success toast only for valid employee
+          toast.success(`Employee data loaded for ${data.full_name}`, {
+            autoClose: 1000,
+            theme: "colored",
+          });
+        } else {
+          // ❌ If not found — do nothing, no alert
+          setEmp(null);
+        }
+      } catch {
+        // ❌ If API fails — do nothing silently
+        setEmp(null);
+      } finally {
+        setLoading(false);
+      }
+    }, 500); // short debounce
+
+    return () => clearTimeout(timer);
+  }, [username]);
 
   // ✅ Progress bar animation
   useEffect(() => {
@@ -138,12 +135,19 @@ export default function InputForm() {
         setLoading(false);
       }, 1000);
     } catch (err) {
-      toast.error(err?.response?.data?.message || "❌ Submit failed. Try again.");
+      toast.error(
+        err?.response?.data?.message || "❌ Submit failed. Try again."
+      );
       setLoading(false);
     }
   };
 
-  const reportingList = ["Murugan R", "Venkatesan K", "Nagarajan M", "Rajkumar"];
+  const reportingList = [
+    "Murugan R",
+    "Venkatesan K",
+    "Nagarajan M",
+    "Rajkumar",
+  ];
 
   return (
     <div
@@ -153,7 +157,7 @@ export default function InputForm() {
       <div
         className="card shadow-lg p-4"
         style={{
-          width: "700px",
+          width: "600px",
           borderRadius: "20px",
           transform: "translateY(-20px)",
         }}
@@ -183,7 +187,11 @@ export default function InputForm() {
             <div className="row g-3 mt-1">
               <div className="col-md-6">
                 <label className="form-label">Full Name</label>
-                <input className="form-control" value={emp.full_name} readOnly />
+                <input
+                  className="form-control"
+                  value={emp.full_name}
+                  readOnly
+                />
               </div>
               <div className="col-md-6">
                 <label className="form-label">Emp ID</label>
@@ -191,7 +199,11 @@ export default function InputForm() {
               </div>
               <div className="col-md-6">
                 <label className="form-label">Department</label>
-                <input className="form-control" value={emp.department} readOnly />
+                <input
+                  className="form-control"
+                  value={emp.department}
+                  readOnly
+                />
               </div>
               <div className="col-md-6">
                 <label className="form-label">Reporting To</label>
@@ -275,31 +287,33 @@ export default function InputForm() {
                           : "none",
                     }}
                   >
-                   <input
-  type="checkbox"
-  className="form-check-input"
-  id={`mgr-${index}`}
-  style={{
-    transform: "scale(1.3)",
-    cursor: "pointer",
-    marginLeft: "10px", // ✅ slight right move
-    marginRight: "12px",
-  }}
-  checked={form.reporting_to.includes(person)}
-  onChange={(e) => {
-    if (e.target.checked) {
-      setForm((prev) => ({
-        ...prev,
-        reporting_to: [...prev.reporting_to, person],
-      }));
-    } else {
-      setForm((prev) => ({
-        ...prev,
-        reporting_to: prev.reporting_to.filter((p) => p !== person),
-      }));
-    }
-  }}
-/>
+                    <input
+                      type="checkbox"
+                      className="form-check-input"
+                      id={`mgr-${index}`}
+                      style={{
+                        transform: "scale(1.3)",
+                        cursor: "pointer",
+                        marginLeft: "10px", // ✅ slight right move
+                        marginRight: "12px",
+                      }}
+                      checked={form.reporting_to.includes(person)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setForm((prev) => ({
+                            ...prev,
+                            reporting_to: [...prev.reporting_to, person],
+                          }));
+                        } else {
+                          setForm((prev) => ({
+                            ...prev,
+                            reporting_to: prev.reporting_to.filter(
+                              (p) => p !== person
+                            ),
+                          }));
+                        }
+                      }}
+                    />
 
                     <label
                       className="form-check-label"
@@ -315,11 +329,11 @@ export default function InputForm() {
           </div>
 
           {/* Button + Progress */}
-          <div className="mt-4">
+          <div className="mt-4 text-end">
             <button
               type="submit"
-              className="btn btn-outline-success w-100 fw-bold shadow-sm py-2"
-              style={{ fontSize: "1.05rem" }}
+              className="btn btn-success fw-bold shadow-sm py-2 px-4"
+              style={{ fontSize: "1.05rem", width: "auto", minWidth: "160px" }}
               disabled={loading || !emp}
             >
               {loading ? `Submitting... ${progress}%` : "Send Mail"}
@@ -328,7 +342,11 @@ export default function InputForm() {
             {loading && (
               <div
                 className="progress mt-2"
-                style={{ height: "8px", borderRadius: "6px" }}
+                style={{
+                  height: "8px",
+                  borderRadius: "6px",
+                  width: "100%",
+                }}
               >
                 <div
                   className="progress-bar progress-bar-striped progress-bar-animated bg-success"

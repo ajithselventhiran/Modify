@@ -1,14 +1,19 @@
 import { Routes, Route } from "react-router-dom";
-import InputForm from "./Pages/Inputform.jsx";
+import ManagerLogin from "./Pages/ManagerLogin.jsx";
+import ManagerDashboard from "./Pages/ManagerDashboard.jsx";
+import StaffDashboard from "./Pages/StaffDashboard.jsx";
 import "./App.css";
+import InputForm from "./Pages/Inputform.jsx";
 
 export default function App() {
   return (
-    <div>
+    <>
       <Routes>
-        {/* 👇 Default route directly shows InputForm */}
-        <Route path="/" element={<InputForm />} />
+        <Route path="/" element={<InputForm/>} />
+        <Route path="/login" element={<ManagerLogin />} />
+        <Route path="/manager" element={<ManagerDashboard />} />
+        <Route path="/staff" element={<StaffDashboard />} />
       </Routes>
-    </div>
+    </>
   );
 }

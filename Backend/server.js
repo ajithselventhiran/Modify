@@ -2,8 +2,9 @@
 import express from "express";
 import cors from "cors";
 import mysql from "mysql2/promise";
-import nodemailer from "nodemailer";
 import dotenv from "dotenv";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 
 dotenv.config();
 
@@ -11,9 +12,9 @@ dotenv.config();
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.set("trust proxy", true); // so req.ip works behind proxies
+app.set("trust proxy", true);
 
-// ---------------------- MySQL Connection ----------------------
+// ---------------------- MySQL ----------------------
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -22,67 +23,58 @@ const pool = mysql.createPool({
   connectionLimit: 10,
 });
 
-//  Test Database Connection
+// ✅ Test DB
 (async () => {
   try {
     const conn = await pool.getConnection();
-    console.log("✅ MySQL Database Connected Successfully!");
     const [rows] = await conn.query("SELECT DATABASE() AS db;");
-    console.log(" Using Database:", rows[0].db);
+    console.log("✅ Connected DB:", rows[0].db);
     conn.release();
   } catch (err) {
-    console.error("❌ MySQL Database Connection Failed!");
-    console.error("Error Details:", err.message);
+    console.error("❌ DB connection failed:", err.message);
     process.exit(1);
   }
 })();
 
-// ---------------------- Nodemailer Config ----------------------
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT || 587),
-  secure: String(process.env.SMTP_SECURE) === "true",
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+// ---------------------- Helpers ----------------------
+const JWT_SECRET = process.env.JWT_SECRET || "supersecret123";
+const JWT_EXPIRES = "2d";
 
-//  Check Mail Transport once
-transporter.verify((error) => {
-  if (error) {
-    console.error("❌ Mail Server Connection Failed:", error.message);
-  } else {
-    console.log("📧 Mail Server Ready to Send Emails");
+function auth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: "No token" });
+  try {
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch {
+    res.status(403).json({ error: "Invalid or expired token" });
   }
-});
+}
 
 // ---------------------- Routes ----------------------
 
-// Quick health check
+// 🔹 Health check
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
-//  1) Find employee by emp_id or username
+// 🔹 Find employee
 app.get("/api/employees/find", async (req, res) => {
   try {
     const { key } = req.query;
-    if (!key) return res.status(400).json({ message: "key is required" });
-
+    if (!key) return res.status(400).json({ message: "key required" });
     const [rows] = await pool.query(
-      `SELECT * FROM employees WHERE emp_id = ? OR username = ? LIMIT 1`,
+      "SELECT * FROM employees WHERE emp_id = ? OR username = ? LIMIT 1",
       [key, key]
     );
-    if (!rows.length)
-      return res.status(404).json({ message: "Employee not found" });
-
+    if (!rows.length) return res.status(404).json({ message: "Not found" });
     res.json(rows[0]);
   } catch (e) {
-    console.error("❌ Error finding employee:", e);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-//  2) Get Client IP (for frontend testing)
+// 🔹 Get client IP
 app.get("/api/ip", (req, res) => {
   const ip = (req.headers["x-forwarded-for"] || req.ip || "")
     .toString()
@@ -91,53 +83,92 @@ app.get("/api/ip", (req, res) => {
   res.json({ ip });
 });
 
-//  3) Create Ticket + Send Email
-app.post("/api/tickets", async (req, res) => {
-  let {
-    emp_id,
-    username,
-    full_name,
-    department,
-    reporting_to,
-    issue_text,
-    remarks,
-    ip_address,
-  } = req.body || {};
+// ======================================================
+// 🧑‍💼 LOGIN
+// ======================================================
+app.post("/api/login", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password)
+    return res.status(400).json({ error: "Username & password required" });
 
-  //  Validate required fields
-  if (
-    !emp_id ||
-    !username ||
-    !full_name ||
-    !department ||
-    !reporting_to ||
-    !issue_text
-  ) {
-    return res.status(400).json({ message: "Missing required fields" });
-  }
-
-  //  Convert reporting list array to string
-  if (Array.isArray(reporting_to)) {
-    reporting_to = reporting_to.join(", ");
-  }
-
-  //  Use frontend public IP first, fallback to backend IP
-  const sys_ip =
-    ip_address ||
-    (req.headers["x-forwarded-for"] || req.ip || "")
-      .toString()
-      .split(",")[0]
-      .trim();
-
-  const conn = await pool.getConnection();
   try {
-    await conn.beginTransaction();
+    const [rows] = await pool.query(
+      "SELECT * FROM users_login WHERE username = ?",
+      [username]
+    );
+    if (!rows.length) return res.status(401).json({ error: "Invalid username" });
 
-    // ✅ Save ticket
-    await conn.query(
-      `INSERT INTO tickets 
-      (emp_id, username, full_name, department, reporting_to, system_ip, issue_text, remarks)
-      VALUES (?,?,?,?,?,?,?,?)`,
+    const user = rows[0];
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) return res.status(401).json({ error: "Invalid password" });
+
+    const token = jwt.sign(
+      {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        display_name: user.display_name,
+      },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES }
+    );
+
+    res.json({
+      ok: true,
+      token,
+      user: {
+        username: user.username,
+        role: user.role,
+        display_name: user.display_name,
+      },
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+// ======================================================
+// 🧾 TICKETS
+// ======================================================
+
+// 🔸 Create ticket (staff submits)
+app.post("/api/tickets", async (req, res) => {
+  try {
+    let {
+      emp_id,
+      username,
+      full_name,
+      department,
+      reporting_to,
+      issue_text,
+      remarks,
+      ip_address,
+    } = req.body;
+
+    if (
+      !emp_id ||
+      !username ||
+      !full_name ||
+      !department ||
+      !reporting_to ||
+      !issue_text
+    ) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    if (Array.isArray(reporting_to)) reporting_to = reporting_to[0];
+    const sys_ip =
+      ip_address ||
+      (req.headers["x-forwarded-for"] || req.ip || "")
+        .toString()
+        .split(",")[0]
+        .trim();
+
+    await pool.query(
+      `INSERT INTO tickets
+       (emp_id, username, full_name, department, reporting_to, system_ip, issue_text, remarks, status)
+       VALUES (?,?,?,?,?,?,?,?, 'PENDING')`,
       [
         emp_id,
         username,
@@ -146,53 +177,106 @@ app.post("/api/tickets", async (req, res) => {
         reporting_to,
         sys_ip,
         issue_text,
-        remarks,
+        remarks || null,
       ]
     );
 
-    await conn.commit();
-
-    // Format email HTML
-    const mailHtml = `
-      <div style="font-family:Arial, sans-serif; padding:10px; background:#f4f7fb;">
-        <h2 style="color:#007bff;">Rapid Ticket Submitted</h2>
-        <table style="border-collapse:collapse; width:100%; background:#fff;" border="1" cellpadding="8">
-          <tr><td><b>Employee</b></td><td>${full_name} (${emp_id}, ${username})</td></tr>
-          <tr><td><b>Department</b></td><td>${department}</td></tr>
-          <tr><td><b>Reporting To</b></td><td>${reporting_to}</td></tr>
-          <tr><td><b>System IP</b></td><td>${sys_ip}</td></tr>
-          <tr><td><b>Issue</b></td><td>${(issue_text || "").replace(
-            /\n/g,
-            "<br/>"
-          )}</td></tr>
-          <tr><td><b>Remarks</b></td><td>${remarks || "-"}</td></tr>
-          <tr><td><b>Time</b></td><td>${new Date().toLocaleString()}</td></tr>
-        </table>
-        <p style="margin-top:10px;">Thank you,<br/><b>Rapid Ticketing System</b></p>
-      </div>
-    `;
-
-    //  Send email
-    await transporter.sendMail({
-      from: process.env.MAIL_FROM,
-      to: process.env.MAIL_TO,
-      subject: `New Ticket: ${full_name} (${emp_id})`,
-      html: mailHtml,
-    });
-
-    console.log(`✅ Ticket saved & mail sent for ${full_name} (${emp_id})`);
-    res.json({ ok: true, ip: sys_ip, message: "Ticket saved and mail sent" });
+    res.json({ ok: true, message: "Ticket created successfully" });
   } catch (e) {
-    await conn.rollback();
-    console.error("❌ Ticket Save/Email Error:", e.message);
-    res.status(500).json({ message: "Failed to save/send" });
-  } finally {
-    conn.release();
+    console.error(e);
+    res.status(500).json({ message: "Failed to create ticket" });
+  }
+});
+
+// ======================================================
+// 🧭 MANAGER ROUTES
+// ======================================================
+
+// 🔹 Manager: get my tickets
+app.get("/api/manager/tickets", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "MANAGER")
+      return res.status(403).json({ error: "Access denied" });
+    const manager = req.user.display_name;
+    const { status } = req.query;
+    const params = [manager];
+    let sql = "SELECT * FROM tickets WHERE reporting_to = ?";
+    if (status && status !== "ALL") {
+      sql += " AND status = ?";
+      params.push(status);
+    }
+    sql += " ORDER BY created_at DESC";
+    const [rows] = await pool.query(sql, params);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: "Failed to load tickets" });
+  }
+});
+
+// 🔹 Manager: assign ticket
+app.patch("/api/manager/tickets/:id/assign", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "MANAGER")
+      return res.status(403).json({ error: "Access denied" });
+    const { id } = req.params;
+    const { assigned_to } = req.body;
+    if (!assigned_to)
+      return res.status(400).json({ error: "assigned_to required" });
+    await pool.query(
+      "UPDATE tickets SET assigned_to=?, status='ASSIGNED' WHERE id=?",
+      [assigned_to, id]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: "Assign failed" });
+  }
+});
+
+// ======================================================
+// 👷 STAFF ROUTES
+// ======================================================
+
+// 🔹 Staff: get my assigned tickets
+app.get("/api/staff/my-tickets", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "STAFF")
+      return res.status(403).json({ error: "Access denied" });
+    const staff = req.user.display_name;
+    const { status } = req.query;
+    const params = [staff];
+    let sql = "SELECT * FROM tickets WHERE assigned_to = ?";
+    if (status && status !== "ALL") {
+      sql += " AND status = ?";
+      params.push(status);
+    }
+    sql += " ORDER BY created_at DESC";
+    const [rows] = await pool.query(sql, params);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: "Failed to load tickets" });
+  }
+});
+
+// 🔹 Staff: mark fixed
+app.patch("/api/staff/tickets/:id/fix", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "STAFF")
+      return res.status(403).json({ error: "Access denied" });
+    const { id } = req.params;
+    const { remark } = req.body;
+    if (remark && remark.trim()) {
+      await pool.query(
+        "UPDATE tickets SET remarks = CONCAT(COALESCE(remarks,''), '\\n[FIX NOTE] ', ?) WHERE id = ?",
+        [remark.trim(), id]
+      );
+    }
+    await pool.query("UPDATE tickets SET status='FIXED' WHERE id=?", [id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to mark fixed" });
   }
 });
 
 // ---------------------- Start Server ----------------------
 const port = Number(process.env.PORT || 5000);
-app.listen(port, () => {
-  console.log(`🚀 API running on http://localhost:${port}`);
-});
+app.listen(port, () => console.log(`🚀 API running on http://localhost:${port}`));
