@@ -27,6 +27,7 @@ export default function InputForm() {
       .catch(() => setIp("Unavailable"));
   }, []);
 
+  // ✅ Search Employee
   useEffect(() => {
     if (!username.trim()) {
       setEmp(null);
@@ -40,11 +41,10 @@ export default function InputForm() {
           params: { key: username },
         });
 
-        // ✅ If employee exists (has emp_id)
+        // ✅ Found employee in users table
         if (data && data.emp_id) {
           setEmp(data);
 
-          // Set default reporting_to if empty
           if (data.reporting_to && !form.reporting_to.length) {
             setForm((prev) => ({
               ...prev,
@@ -52,22 +52,19 @@ export default function InputForm() {
             }));
           }
 
-          // ✅ Show success toast only for valid employee
           toast.success(`Employee data loaded for ${data.full_name}`, {
             autoClose: 1000,
             theme: "colored",
           });
         } else {
-          // ❌ If not found — do nothing, no alert
           setEmp(null);
         }
       } catch {
-        // ❌ If API fails — do nothing silently
         setEmp(null);
       } finally {
         setLoading(false);
       }
-    }, 500); // short debounce
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [username]);
@@ -88,7 +85,7 @@ export default function InputForm() {
     return () => clearInterval(interval);
   }, [loading]);
 
-  // ✅ Close dropdown when clicking outside
+  // ✅ Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!e.target.closest(".dropdown-container")) {
@@ -99,7 +96,7 @@ export default function InputForm() {
     return () => document.removeEventListener("click", handleClickOutside);
   }, []);
 
-  // ✅ Submit Form
+  // ✅ Submit Ticket
   const submitTicket = async (e) => {
     e.preventDefault();
     if (!emp) return toast.error("⚠️ Please enter a valid username.");
@@ -124,7 +121,7 @@ export default function InputForm() {
       await axios.post(`${API}/api/tickets`, payload);
 
       setTimeout(() => {
-        toast.success("✅ Submitted Successfully!", {
+        toast.success("✅ Ticket Submitted Successfully!", {
           position: "top-center",
           autoClose: 2500,
           theme: "colored",
@@ -142,11 +139,12 @@ export default function InputForm() {
     }
   };
 
+  // ✅ Manager List (Can be fetched or static)
   const reportingList = [
+    "Venkatesan M",
     "Murugan R",
-    "Venkatesan K",
-    "Nagarajan M",
-    "Rajkumar",
+    "Rajkumar P",
+    "Piraba K",
   ];
 
   return (
@@ -169,29 +167,25 @@ export default function InputForm() {
           System IP: <b className="text-dark">{ip || "Fetching..."}</b>
         </p>
 
-        {/* 🔍 Username Only */}
-        <div className="card p-3 mb-4 border-0  shadow-sm">
+        {/* 🔍 Employee Search */}
+        <div className="card p-3 mb-4 border-0 shadow-sm">
           <div className="mb-3">
             <label className="form-label">Username</label>
             <input
               className="form-control"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your username "
+              placeholder="Enter your username"
             />
           </div>
 
-          {loading && <p className="text-secondary"> Searching...</p>}
+          {loading && <p className="text-secondary">Searching...</p>}
 
           {emp && (
             <div className="row g-3 mt-1">
               <div className="col-md-6">
                 <label className="form-label">Full Name</label>
-                <input
-                  className="form-control"
-                  value={emp.full_name}
-                  readOnly
-                />
+                <input className="form-control" value={emp.full_name} readOnly />
               </div>
               <div className="col-md-6">
                 <label className="form-label">Emp ID</label>
@@ -294,7 +288,7 @@ export default function InputForm() {
                       style={{
                         transform: "scale(1.3)",
                         cursor: "pointer",
-                        marginLeft: "10px", // ✅ slight right move
+                        marginLeft: "10px",
                         marginRight: "12px",
                       }}
                       checked={form.reporting_to.includes(person)}
@@ -328,15 +322,15 @@ export default function InputForm() {
             )}
           </div>
 
-          {/* Button + Progress */}
+          {/* Submit Button + Progress */}
           <div className="mt-4 text-end">
             <button
               type="submit"
               className="btn btn-success fw-bold shadow-sm py-2 px-4"
-              style={{ fontSize: "1.05rem", width: "auto", minWidth: "160px" }}
+              style={{ fontSize: "1.05rem", minWidth: "160px" }}
               disabled={loading || !emp}
             >
-              {loading ? `Submitting... ${progress}%` : "Send Mail"}
+              {loading ? `Submitting... ${progress}%` : "Submit Ticket"}
             </button>
 
             {loading && (

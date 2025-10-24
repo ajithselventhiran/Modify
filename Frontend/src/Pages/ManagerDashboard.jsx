@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 
-const API = "http://localhost:5000"; // 🔗 Your backend API
+const API = "http://localhost:5000"; // 🔗 Backend API
 
-export default function ManagerDashboard({ managerName = "Murugan R" }) {
+export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
   const [tickets, setTickets] = useState([]);
-  const [staffList, setStaffList] = useState([]);
+  const [technicianList, setTechnicianList] = useState([]);
   const [filter, setFilter] = useState("ALL");
   const [loading, setLoading] = useState(false);
   const [counts, setCounts] = useState({
@@ -15,12 +15,14 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
     INPROCESS: 0,
     COMPLETE: 0,
     FIXED: 0,
+    REJECTED: 0,
   });
 
   // 🔹 Modal States
   const [showModal, setShowModal] = useState(false);
+  const [showIssueModal, setShowIssueModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
-  const [selectedStaff, setSelectedStaff] = useState("");
+  const [selectedTechnician, setSelectedTechnician] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [priority, setPriority] = useState("");
@@ -28,8 +30,8 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
 
   const token = localStorage.getItem("token");
 
-  // 🔹 Load tickets by manager
-  const load = async () => {
+  // 🔹 Load tickets assigned to this manager
+  const loadTickets = async () => {
     setLoading(true);
     try {
       const q = new URLSearchParams({ manager: managerName });
@@ -40,31 +42,29 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
       const data = await res.json();
       setTickets(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Load tickets failed:", err);
+      console.error("❌ Load tickets failed:", err);
       setTickets([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // 🔹 Load staff list for this manager
-  const loadStaff = async () => {
+  // 🔹 Load technician list
+  const loadTechnicians = async () => {
     try {
-      const res = await fetch(
-        `${API}/api/manager/staff?manager=${encodeURIComponent(managerName)}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await fetch(`${API}/api/manager/technicians`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
-
-      // ✅ Expect array of { username, name }
-      setStaffList(Array.isArray(data) ? data : []);
+      console.log("🔧 Technicians loaded:", data);
+      setTechnicianList(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Load staff failed:", err);
-      setStaffList([]);
+      console.error("❌ Load technicians failed:", err);
+      setTechnicianList([]);
     }
   };
 
-  // 🔹 Load ticket counts
+  // 🔹 Load ticket counts by status
   const loadCounts = async () => {
     try {
       const res = await fetch(
@@ -82,10 +82,11 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
           INPROCESS: 0,
           COMPLETE: 0,
           FIXED: 0,
+          REJECTED: 0,
         }
       );
     } catch (err) {
-      console.error("Load counts failed:", err);
+      console.error("❌ Load counts failed:", err);
       setCounts({
         NOT_ASSIGNED: 0,
         ASSIGNED: 0,
@@ -93,18 +94,19 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
         INPROCESS: 0,
         COMPLETE: 0,
         FIXED: 0,
+        REJECTED: 0,
       });
     }
   };
 
-  // 🔹 Assign ticket with modal data
+  // 🔹 Assign Ticket
   const assign = async () => {
-    if (!selectedTicket || !selectedStaff)
-      return alert("Select a staff member first!");
+    if (!selectedTicket || !selectedTechnician)
+      return alert("Select a technician first!");
 
     try {
       const body = {
-        assigned_to: selectedStaff,
+        assigned_to: selectedTechnician,
         start_date: startDate,
         end_date: endDate,
         priority,
@@ -124,26 +126,55 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
       );
 
       if (res.ok) {
-        await load();
+        await loadTickets();
         await loadCounts();
-        alert(`✅ Ticket ${selectedTicket.id} assigned to ${selectedStaff}`);
-        setShowModal(false);
-        setSelectedTicket(null);
-        setSelectedStaff("");
-        setStartDate("");
-        setEndDate("");
-        setPriority("");
-        setRemarks("");
+        alert(`✅ Ticket ${selectedTicket.id} assigned to ${selectedTechnician}`);
+        closeModal();
       } else {
         const data = await res.json();
         alert(data?.error || "❌ Assign failed");
       }
     } catch (err) {
-      console.error("Assign error:", err);
+      console.error("❌ Assign error:", err);
     }
   };
 
-  // 🔹 Status badge color mapping
+  // 🔹 Reject Ticket
+  const handleReject = async (ticketId) => {
+    if (!window.confirm("Are you sure you want to reject this ticket?")) return;
+
+    try {
+      const res = await fetch(`${API}/api/manager/tickets/${ticketId}/reject`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.ok) {
+        alert("❌ Ticket rejected successfully");
+        await loadTickets();
+        await loadCounts();
+      } else {
+        const data = await res.json();
+        alert(data?.error || "Reject failed");
+      }
+    } catch (err) {
+      console.error("❌ Reject error:", err);
+    }
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setSelectedTicket(null);
+    setSelectedTechnician("");
+    setStartDate("");
+    setEndDate("");
+    setPriority("");
+    setRemarks("");
+  };
+
+  // 🔹 Status badge colors
   const getStatusBadge = (status) => {
     const map = {
       NOT_ASSIGNED: "bg-secondary",
@@ -151,18 +182,19 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
       PENDING: "bg-info text-dark",
       INPROCESS: "bg-primary",
       COMPLETE: "bg-success",
-      FIXED: "bg-success",
+      FIXED: "bg-dark",
+      REJECTED: "bg-danger",
     };
     return map[status?.toUpperCase()] || "bg-secondary";
   };
 
-  // 🔹 Auto-load
+  // 🔹 Auto load data
   useEffect(() => {
-    load();
+    loadTickets();
   }, [filter]);
 
   useEffect(() => {
-    loadStaff();
+    loadTechnicians();
     loadCounts();
   }, []);
 
@@ -174,7 +206,7 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
           Manager Dashboard — {managerName}
         </h3>
 
-        {/* Filter buttons */}
+        {/* Filter Buttons */}
         <div className="d-flex gap-2 flex-wrap">
           {[
             "ALL",
@@ -184,6 +216,7 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
             "INPROCESS",
             "COMPLETE",
             "FIXED",
+            "REJECTED",
           ].map((s) => (
             <button
               key={s}
@@ -230,16 +263,22 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
             ) : (
               tickets.map((t) => (
                 <tr key={t.id}>
-                  {/* 🔹 Show Employee ID instead of Ticket ID */}
                   <td>{t.emp_id || "-"}</td>
-
                   <td>
                     {t.full_name}{" "}
                     <small className="text-muted">({t.username})</small>
                   </td>
                   <td>{t.department}</td>
-                  <td style={{ maxWidth: 320 }}>
-                    <div className="text-truncate">{t.issue_text}</div>
+                  <td>
+                    <button
+                      className="btn btn-sm btn-outline-info"
+                      onClick={() => {
+                        setSelectedTicket(t);
+                        setShowIssueModal(true);
+                      }}
+                    >
+                      View
+                    </button>
                   </td>
                   <td>{t.system_ip || "-"}</td>
                   <td>
@@ -251,7 +290,7 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
                     </span>
                   </td>
                   <td>{t.assigned_to || "-"}</td>
-                  <td>
+                  <td className="d-flex gap-2">
                     <button
                       className="btn btn-sm btn-outline-primary"
                       disabled={t.status === "ASSIGNED" || t.status === "FIXED"}
@@ -262,6 +301,13 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
                     >
                       Assign
                     </button>
+                    <button
+                      className="btn btn-sm btn-outline-danger"
+                      disabled={t.status === "REJECTED" || t.status === "FIXED"}
+                      onClick={() => handleReject(t.id)}
+                    >
+                      Reject
+                    </button>
                   </td>
                 </tr>
               ))
@@ -270,7 +316,55 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
         </table>
       </div>
 
-      {/* Modal */}
+      {/* Issue View Modal */}
+      {showIssueModal && selectedTicket && (
+        <div
+          className="modal fade show d-block"
+          style={{ background: "rgba(0,0,0,0.5)" }}
+        >
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg rounded-4">
+              <div className="modal-header bg-info text-white">
+                <h5 className="modal-title">
+                  Issue Details — {selectedTicket.emp_id}
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowIssueModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>
+                  <strong>Employee:</strong> {selectedTicket.full_name}
+                </p>
+                <p>
+                  <strong>Department:</strong> {selectedTicket.department}
+                </p>
+                <p>
+                  <strong>IP Address:</strong> {selectedTicket.system_ip}
+                </p>
+                <hr />
+                <p>
+                  <strong>Issue:</strong>
+                  <br />
+                  {selectedTicket.issue_text}
+                </p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowIssueModal(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Modal */}
       {showModal && selectedTicket && (
         <div
           className="modal fade show d-block"
@@ -280,35 +374,38 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
             <div className="modal-content border-0 shadow-lg rounded-4">
               <div className="modal-header bg-primary text-white">
                 <h5 className="modal-title">
-                  Assign Ticket for {selectedTicket.emp_id}
+                  Assign Ticket — {selectedTicket.emp_id}
                 </h5>
                 <button
                   type="button"
                   className="btn-close"
-                  onClick={() => setShowModal(false)}
+                  onClick={closeModal}
                 ></button>
               </div>
 
               <div className="modal-body">
                 <div className="row g-3">
-                  {/* Assign To */}
                   <div className="col-md-12">
-                    <label className="form-label fw-semibold">Assign To</label>
+                    <label className="form-label fw-semibold">
+                      Assign To (Technician)
+                    </label>
                     <select
                       className="form-select"
-                      value={selectedStaff}
-                      onChange={(e) => setSelectedStaff(e.target.value)}
+                      value={selectedTechnician}
+                      onChange={(e) => setSelectedTechnician(e.target.value)}
                     >
-                      <option value="">Select Staff</option>
-                      {staffList.map((s) => (
-                        <option key={s.username} value={s.name}>
-                          {s.name} ({s.username})
+                      <option value="">Select Technician</option>
+                      {technicianList.map((t) => (
+                        <option
+                          key={t.username}
+                          value={t.name || t.full_name || t.username}
+                        >
+                          {t.name || t.full_name || t.username} ({t.username})
                         </option>
                       ))}
                     </select>
                   </div>
 
-                  {/* Dates */}
                   <div className="col-md-6">
                     <label className="form-label fw-semibold">Start Date</label>
                     <input
@@ -318,6 +415,7 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
                       onChange={(e) => setStartDate(e.target.value)}
                     />
                   </div>
+
                   <div className="col-md-6">
                     <label className="form-label fw-semibold">End Date</label>
                     <input
@@ -328,7 +426,6 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
                     />
                   </div>
 
-                  {/* Priority */}
                   <div className="col-md-6">
                     <label className="form-label fw-semibold">Priority</label>
                     <select
@@ -343,7 +440,6 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
                     </select>
                   </div>
 
-                  {/* Remarks */}
                   <div className="col-md-6">
                     <label className="form-label fw-semibold">Remarks</label>
                     <textarea
@@ -357,19 +453,11 @@ export default function ManagerDashboard({ managerName = "Murugan R" }) {
               </div>
 
               <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowModal(false)}
-                >
+                <button className="btn btn-secondary" onClick={closeModal}>
                   Cancel
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={assign}
-                >
-                  Assigned
+                <button className="btn btn-primary" onClick={assign}>
+                  Assign
                 </button>
               </div>
             </div>

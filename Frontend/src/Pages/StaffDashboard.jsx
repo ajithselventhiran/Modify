@@ -3,27 +3,32 @@ import "bootstrap/dist/css/bootstrap.min.css";
 
 const API = "http://localhost:5000";
 
-export default function StaffDashboard() {
+export default function TechnicianDashboard() {
   const [tickets, setTickets] = useState([]);
   const [filter, setFilter] = useState("ALL");
   const [loading, setLoading] = useState(false);
-  const [staffName, setStaffName] = useState("");
+  const [techName, setTechName] = useState("");
 
+  // 🔹 Load Technician Info from LocalStorage
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
-    setStaffName(userData?.display_name || userData?.username || "Staff");
+    setTechName(userData?.display_name || userData?.username || "Technician");
   }, []);
 
-  const load = async () => {
+  // 🔹 Load Tickets Assigned to Technician
+  const loadTickets = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
       const q = new URLSearchParams();
       if (filter !== "ALL") q.set("status", filter);
 
-      const res = await fetch(`${API}/api/staff/my-tickets?${q.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(
+        `${API}/api/technician/my-tickets?${q.toString()}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       if (!res.ok) throw new Error("Failed to load tickets");
       const data = await res.json();
       setTickets(Array.isArray(data) ? data : []);
@@ -36,14 +41,14 @@ export default function StaffDashboard() {
   };
 
   useEffect(() => {
-    load();
+    loadTickets();
   }, [filter]);
 
-  // 🔹 Update ticket status (Pending → Inprocess → Complete)
+  // 🔹 Update Ticket Status (ASSIGNED → PENDING → INPROCESS → COMPLETE)
   const updateStatus = async (id, newStatus) => {
     const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`${API}/api/staff/tickets/${id}/status`, {
+      const res = await fetch(`${API}/api/technician/tickets/${id}/status`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -51,8 +56,9 @@ export default function StaffDashboard() {
         },
         body: JSON.stringify({ status: newStatus }),
       });
+
       if (res.ok) {
-        await load();
+        await loadTickets();
         alert(`✅ Ticket status updated to ${newStatus}`);
       } else {
         const data = await res.json();
@@ -64,15 +70,27 @@ export default function StaffDashboard() {
     }
   };
 
+  // 🔹 Status Badge Color
+  const getStatusBadge = (status) => {
+    const map = {
+      ASSIGNED: "bg-warning text-dark",
+      PENDING: "bg-info text-dark",
+      INPROCESS: "bg-primary",
+      COMPLETE: "bg-success",
+    };
+    return map[status?.toUpperCase()] || "bg-secondary";
+  };
+
   return (
     <div className="container py-4">
       {/* Header */}
-      <div className="d-flex align-items-center justify-content-between mb-3">
+      <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
         <h3 className="m-0 text-success fw-bold">
-          Staff Dashboard — {staffName}
+          Technician Dashboard — {techName}
         </h3>
 
-        <div className="d-flex gap-2">
+        {/* Filter Buttons */}
+        <div className="d-flex gap-2 flex-wrap">
           {["ALL", "ASSIGNED", "PENDING", "INPROCESS", "COMPLETE"].map((s) => (
             <button
               key={s}
@@ -87,8 +105,8 @@ export default function StaffDashboard() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="table-responsive shadow-sm">
+      {/* Tickets Table */}
+      <div className="table-responsive">
         <table className="table table-hover align-middle">
           <thead className="table-success">
             <tr>
@@ -111,49 +129,32 @@ export default function StaffDashboard() {
             ) : tickets.length === 0 ? (
               <tr>
                 <td colSpan="7" className="text-center text-muted py-3">
-                  No tickets found
+                  No tickets found.
                 </td>
               </tr>
             ) : (
               tickets.map((t) => (
                 <tr key={t.id}>
-                  {/* Assigned By */}
                   <td>{t.reporting_to || "—"}</td>
-
-                  {/* Issue */}
                   <td style={{ maxWidth: 320 }}>
                     <div className="text-truncate">{t.issue_text}</div>
                   </td>
-
-                  {/* Start Date */}
-                  <td>{t.start_date ? new Date(t.start_date).toLocaleDateString() : "—"}</td>
-
-                  {/* End Date */}
-                  <td>{t.end_date ? new Date(t.end_date).toLocaleDateString() : "—"}</td>
-
-                  {/* Status */}
                   <td>
-                    <span
-                      className={`badge ${
-                        t.status === "ASSIGNED"
-                          ? "bg-warning text-dark"
-                          : t.status === "PENDING"
-                          ? "bg-info text-dark"
-                          : t.status === "INPROCESS"
-                          ? "bg-primary"
-                          : t.status === "COMPLETE"
-                          ? "bg-success"
-                          : "bg-secondary"
-                      }`}
-                    >
+                    {t.start_date
+                      ? new Date(t.start_date).toLocaleDateString()
+                      : "—"}
+                  </td>
+                  <td>
+                    {t.end_date
+                      ? new Date(t.end_date).toLocaleDateString()
+                      : "—"}
+                  </td>
+                  <td>
+                    <span className={`badge ${getStatusBadge(t.status)}`}>
                       {t.status}
                     </span>
                   </td>
-
-                  {/* Remarks */}
                   <td>{t.remarks || "-"}</td>
-
-                  {/* Action buttons */}
                   <td>
                     {t.status === "ASSIGNED" && (
                       <button
@@ -163,6 +164,7 @@ export default function StaffDashboard() {
                         Pending
                       </button>
                     )}
+
                     {t.status === "PENDING" && (
                       <button
                         className="btn btn-sm btn-outline-primary me-1"
@@ -171,16 +173,18 @@ export default function StaffDashboard() {
                         In Process
                       </button>
                     )}
+
                     {t.status === "INPROCESS" && (
                       <button
-                        className="btn btn-sm btn-outline-success"
+                        className="btn btn-sm btn-outline-success me-1"
                         onClick={() => updateStatus(t.id, "COMPLETE")}
                       >
                         Complete
                       </button>
                     )}
+
                     {t.status === "COMPLETE" && (
-                      <span className="badge bg-success">Done</span>
+                      <span className="badge bg-success">Completed</span>
                     )}
                   </td>
                 </tr>

@@ -1,9 +1,13 @@
-// ---------------------- Imports ----------------------
+// ======================================================
+// 🔧 RAPID TICKETING BACKEND (Manager + Technician roles)
+// ======================================================
+
 import express from "express";
 import cors from "cors";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
+import nodemailer from "nodemailer";
 
 dotenv.config();
 
@@ -43,24 +47,80 @@ const JWT_EXPIRES = "2d";
 function auth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: "No token" });
+
   try {
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
     next();
-  } catch {
-    res.status(403).json({ error: "Invalid or expired token" });
+  } catch (err) {
+    return res.status(403).json({ error: "Invalid or expired token" });
   }
+}
+
+// ---------------------- Default Mailer ----------------------
+const defaultTransporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
+  port: Number(process.env.SMTP_PORT || 587),
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
+defaultTransporter.verify().then(
+  () => console.log("📧 Default Mailer ready"),
+  (e) => console.warn("⚠️ Mailer not ready:", e?.message || e)
+);
+
+// ---------------------- Helper Functions ----------------------
+async function safeSendMail(options, managerEmail, managerPass) {
+  try {
+    let transporterToUse = defaultTransporter;
+
+    // If manager’s own Gmail credentials are available, use them
+    if (managerEmail && managerPass) {
+      transporterToUse = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 587,
+        secure: false,
+        auth: { user: managerEmail, pass: managerPass },
+      });
+    }
+
+    await transporterToUse.sendMail(options);
+    console.log(`📨 Mail sent from ${options.from} → ${options.to}`);
+  } catch (e) {
+    console.error("❌ Email send failed:", e?.message || e);
+  }
+}
+
+async function getTicketWithEmployeeEmail(id) {
+  const [rows] = await pool.query(
+    `SELECT t.*, u.email AS employee_email
+     FROM tickets t
+     LEFT JOIN users u ON u.username = t.username
+     WHERE t.id = ? LIMIT 1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function getManagerEmail(username) {
+  const [rows] = await pool.query(
+    "SELECT email, mail_pass FROM users WHERE username=? AND role='MANAGER' LIMIT 1",
+    [username]
+  );
+  return rows[0] || null;
 }
 
 // ======================================================
 // 🌐 GENERAL ROUTES
 // ======================================================
 
-// 🔹 Health Check
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
-// 🔹 Get Public IP
 app.get("/api/ip", (req, res) => {
   const ip = (req.headers["x-forwarded-for"] || req.ip || "")
     .toString()
@@ -69,18 +129,17 @@ app.get("/api/ip", (req, res) => {
   res.json({ ip });
 });
 
-// 🔹 Find Employee
 app.get("/api/employees/find", async (req, res) => {
   try {
     const { key } = req.query;
     if (!key) return res.status(400).json({ message: "key required" });
 
     const [rows] = await pool.query(
-      "SELECT * FROM employees WHERE emp_id = ? OR username = ? LIMIT 1",
+      "SELECT * FROM users WHERE emp_id = ? OR username = ? LIMIT 1",
       [key, key]
     );
-    if (!rows.length) return res.status(404).json({ message: "Not found" });
 
+    if (!rows.length) return res.status(404).json({ message: "Not found" });
     res.json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -89,7 +148,7 @@ app.get("/api/employees/find", async (req, res) => {
 });
 
 // ======================================================
-// 👤 LOGIN (Plain Password)
+// 👤 LOGIN (Manager + Technician only)
 // ======================================================
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
@@ -97,17 +156,16 @@ app.post("/api/login", async (req, res) => {
     return res.status(400).json({ error: "Username & password required" });
 
   try {
-    const [rows] = await pool.query(
-      "SELECT * FROM users_login WHERE username = ?",
-      [username]
-    );
+    const [rows] = await pool.query("SELECT * FROM users WHERE username = ?", [
+      username,
+    ]);
 
-    if (!rows.length)
-      return res.status(401).json({ error: "Invalid username" });
+    if (!rows.length) return res.status(401).json({ error: "Invalid username" });
 
     const user = rows[0];
-
-    if (password !== user.password)
+    if (user.role === "EMPLOYEE")
+      return res.status(403).json({ error: "Employee login not allowed" });
+    if (user.password !== password)
       return res.status(401).json({ error: "Invalid password" });
 
     const token = jwt.sign(
@@ -115,7 +173,7 @@ app.post("/api/login", async (req, res) => {
         id: user.id,
         username: user.username,
         role: user.role,
-        display_name: user.display_name,
+        display_name: user.full_name,
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES }
@@ -127,7 +185,7 @@ app.post("/api/login", async (req, res) => {
       user: {
         username: user.username,
         role: user.role,
-        display_name: user.display_name,
+        display_name: user.full_name,
       },
     });
   } catch (e) {
@@ -137,7 +195,7 @@ app.post("/api/login", async (req, res) => {
 });
 
 // ======================================================
-// 🧾 STAFF — Create Ticket
+// 🧾 EMPLOYEE — Create Ticket
 // ======================================================
 app.post("/api/tickets", async (req, res) => {
   try {
@@ -198,7 +256,6 @@ app.post("/api/tickets", async (req, res) => {
 // 👨‍💼 MANAGER ROUTES
 // ======================================================
 
-// 🔹 Manager: Get Tickets
 app.get("/api/manager/tickets", auth, async (req, res) => {
   try {
     if (req.user.role !== "MANAGER")
@@ -223,7 +280,7 @@ app.get("/api/manager/tickets", auth, async (req, res) => {
   }
 });
 
-// 🔹 Manager: Assign Ticket
+// 🔹 Assign Ticket (Manager’s Gmail)
 app.patch("/api/manager/tickets/:id/assign", auth, async (req, res) => {
   try {
     if (req.user.role !== "MANAGER")
@@ -249,6 +306,30 @@ app.patch("/api/manager/tickets/:id/assign", auth, async (req, res) => {
       ]
     );
 
+    const t = await getTicketWithEmployeeEmail(id);
+    const mgr = await getManagerEmail(req.user.username);
+
+    if (t?.employee_email && mgr?.email) {
+      await safeSendMail(
+        {
+          from: mgr.email,
+          to: t.employee_email,
+          subject: `Ticket #${t.id} Assigned`,
+          html: `
+            <p>Hi ${t.full_name || t.username},</p>
+            <p>Your ticket <strong>#${t.id}</strong> has been <strong>ASSIGNED</strong> by ${req.user.display_name}.</p>
+            <p><strong>Technician:</strong> ${t.assigned_to || assigned_to}</p>
+            <p><strong>Priority:</strong> ${t.priority || priority || "-"}</p>
+            <p><strong>Schedule:</strong> ${start_date || "-"} to ${end_date || "-"}</p>
+            <p><strong>Issue:</strong> ${t.issue_text || "-"}</p>
+            <p>— Rapid Ticketing System</p>
+          `,
+        },
+        mgr.email,
+        mgr.mail_pass
+      );
+    }
+
     res.json({ ok: true, message: "Ticket assigned successfully" });
   } catch (e) {
     console.error(e);
@@ -256,75 +337,81 @@ app.patch("/api/manager/tickets/:id/assign", auth, async (req, res) => {
   }
 });
 
-// 🔹 Manager: Get All Staff directly from users_login (real data)
-app.get("/api/manager/staff", auth, async (req, res) => {
+// 🔹 Reject Ticket (Manager’s Gmail)
+app.patch("/api/manager/tickets/:id/reject", auth, async (req, res) => {
   try {
     if (req.user.role !== "MANAGER")
       return res.status(403).json({ error: "Access denied" });
 
-    // ✅ Get both username and display_name
+    const { id } = req.params;
+    const [rows] = await pool.query("SELECT id FROM tickets WHERE id=?", [id]);
+    if (!rows.length)
+      return res.status(404).json({ error: "Ticket not found" });
+
+    await pool.query("UPDATE tickets SET status='REJECTED' WHERE id=?", [id]);
+
+    const t = await getTicketWithEmployeeEmail(id);
+    const mgr = await getManagerEmail(req.user.username);
+
+    if (t?.employee_email && mgr?.email) {
+      await safeSendMail(
+        {
+          from: mgr.email,
+          to: t.employee_email,
+          subject: `Ticket #${t.id} Rejected`,
+          html: `
+            <p>Hi ${t.full_name || t.username},</p>
+            <p>Your ticket <strong>#${t.id}</strong> has been <strong>REJECTED</strong> by ${req.user.display_name}.</p>
+            <p><strong>Issue:</strong> ${t.issue_text || "-"}</p>
+            <p>— Rapid Ticketing System</p>
+          `,
+        },
+        mgr.email,
+        mgr.mail_pass
+      );
+    }
+
+    res.json({ ok: true, message: "Ticket rejected successfully" });
+  } catch (e) {
+    console.error("❌ Reject failed:", e.message);
+    res
+      .status(500)
+      .json({ error: "Reject failed", details: e.message || String(e) });
+  }
+});
+
+// 🔹 Get Technician List (NEW ✅)
+app.get("/api/manager/technicians", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "MANAGER")
+      return res.status(403).json({ error: "Access denied" });
+
     const [rows] = await pool.query(
-      "SELECT username, display_name FROM users_login WHERE role = 'STAFF'"
+      "SELECT username, full_name FROM users WHERE role = 'TECHNICIAN'"
     );
 
-    // ✅ Return both for frontend clarity
-    const staffList = rows.map((r) => ({
+    const techList = rows.map((r) => ({
       username: r.username,
-      name: r.display_name,
+      name: r.full_name,
     }));
 
-    res.json(staffList);
+    res.json(techList);
   } catch (e) {
-    console.error("❌ Failed to load staff:", e);
-    res.status(500).json({ error: "Failed to load staff" });
+    console.error("❌ Failed to load technicians:", e);
+    res.status(500).json({ error: "Failed to load technicians" });
   }
 });
 
-
-// 🔹 Manager: Ticket Counts
-app.get("/api/manager/tickets/counts", auth, async (req, res) => {
+// ✅ Added missing route
+app.get("/api/technician/my-tickets", auth, async (req, res) => {
   try {
-    if (req.user.role !== "MANAGER")
+    if (req.user.role !== "TECHNICIAN")
       return res.status(403).json({ error: "Access denied" });
 
-    const manager = req.query.manager || req.user.display_name;
-    const [rows] = await pool.query(
-      `SELECT status, COUNT(*) AS cnt
-       FROM tickets
-       WHERE reporting_to = ?
-       GROUP BY status`,
-      [manager]
-    );
-
-    const counts = {
-      NOT_ASSIGNED: 0,
-      ASSIGNED: 0,
-      PENDING: 0,
-      INPROCESS: 0,
-      COMPLETE: 0,
-      FIXED: 0,
-    };
-    rows.forEach((r) => (counts[r.status] = r.cnt));
-    res.json(counts);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to load counts" });
-  }
-});
-
-// ======================================================
-// 👷 STAFF ROUTES
-// ======================================================
-
-// 🔹 Staff: View My Tickets
-app.get("/api/staff/my-tickets", auth, async (req, res) => {
-  try {
-    if (req.user.role !== "STAFF")
-      return res.status(403).json({ error: "Access denied" });
-
-    const staff = req.user.display_name;
+    const tech = req.user.display_name; // technician name from JWT
     const { status } = req.query;
-    const params = [staff];
+    const params = [tech];
+
     let sql = "SELECT * FROM tickets WHERE assigned_to = ?";
     if (status && status !== "ALL") {
       sql += " AND status = ?";
@@ -335,53 +422,55 @@ app.get("/api/staff/my-tickets", auth, async (req, res) => {
     const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to load staff tickets" });
+    console.error("❌ Failed to load technician tickets:", e);
+    res.status(500).json({ error: "Failed to load tickets" });
   }
 });
 
-// 🔹 Staff: Update Ticket Status
-app.patch("/api/staff/tickets/:id/status", auth, async (req, res) => {
+
+// ======================================================
+// 👷 TECHNICIAN ROUTES
+// ======================================================
+app.patch("/api/technician/tickets/:id/status", auth, async (req, res) => {
   try {
-    if (req.user.role !== "STAFF")
+    if (req.user.role !== "TECHNICIAN")
       return res.status(403).json({ error: "Access denied" });
 
     const { id } = req.params;
     const { status } = req.body;
-
     const valid = ["PENDING", "INPROCESS", "COMPLETE"];
+
     if (!valid.includes(status))
       return res.status(400).json({ error: "Invalid status" });
 
     await pool.query("UPDATE tickets SET status=? WHERE id=?", [status, id]);
+
+    if (status === "COMPLETE") {
+      const t = await getTicketWithEmployeeEmail(id);
+      if (t?.employee_email) {
+        await safeSendMail(
+          {
+            from: process.env.SMTP_USER,
+            to: t.employee_email,
+            subject: `Ticket #${t.id} Completed`,
+            html: `
+              <p>Hi ${t.full_name || t.username},</p>
+              <p>Your ticket <strong>#${t.id}</strong> has been <strong>COMPLETED</strong>.</p>
+              <p><strong>Issue:</strong> ${t.issue_text || "-"}</p>
+              <p>If anything remains unresolved, reply to this email or open a new ticket.</p>
+              <p>— Rapid Ticketing System</p>
+            `,
+          },
+          null,
+          null
+        );
+      }
+    }
+
     res.json({ ok: true, message: "Status updated successfully" });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to update status" });
-  }
-});
-
-// 🔹 Staff: Mark as Fixed
-app.patch("/api/staff/tickets/:id/fix", auth, async (req, res) => {
-  try {
-    if (req.user.role !== "STAFF")
-      return res.status(403).json({ error: "Access denied" });
-
-    const { id } = req.params;
-    const { remark } = req.body;
-
-    if (remark && remark.trim()) {
-      await pool.query(
-        "UPDATE tickets SET remarks = CONCAT(COALESCE(remarks,''), '\\n[FIX NOTE] ', ?) WHERE id = ?",
-        [remark.trim(), id]
-      );
-    }
-
-    await pool.query("UPDATE tickets SET status='FIXED' WHERE id=?", [id]);
-    res.json({ ok: true, message: "Ticket marked as fixed" });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to mark fixed" });
   }
 });
 
