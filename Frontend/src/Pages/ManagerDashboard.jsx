@@ -164,6 +164,29 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
     }
   };
 
+  // 🔹 Delete Ticket (for rejected ones only)
+  const handleDelete = async (ticketId) => {
+    if (!window.confirm("⚠️ Are you sure you want to permanently delete this rejected ticket?")) return;
+
+    try {
+      const res = await fetch(`${API}/api/manager/tickets/${ticketId}/delete`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        alert("🗑️ Ticket deleted successfully");
+        await loadTickets();
+        await loadCounts();
+      } else {
+        const data = await res.json();
+        alert(data?.error || "Delete failed");
+      }
+    } catch (err) {
+      console.error("❌ Delete error:", err);
+    }
+  };
+
   const closeModal = () => {
     setShowModal(false);
     setSelectedTicket(null);
@@ -290,7 +313,7 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
                     </span>
                   </td>
                   <td>{t.assigned_to || "-"}</td>
-                  <td className="d-flex gap-2">
+                  <td className="d-flex gap-2 flex-wrap">
                     <button
                       className="btn btn-sm btn-outline-primary"
                       disabled={t.status === "ASSIGNED" || t.status === "FIXED"}
@@ -301,6 +324,7 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
                     >
                       Assign
                     </button>
+
                     <button
                       className="btn btn-sm btn-outline-danger"
                       disabled={t.status === "REJECTED" || t.status === "FIXED"}
@@ -308,6 +332,16 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
                     >
                       Reject
                     </button>
+
+                    {/* ✅ Show Delete button only when Rejected */}
+                    {t.status === "REJECTED" && (
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => handleDelete(t.id)}
+                      >
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))

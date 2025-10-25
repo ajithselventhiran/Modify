@@ -75,22 +75,21 @@ defaultTransporter.verify().then(
 );
 
 // ---------------------- Helper Functions ----------------------
-async function safeSendMail(options, managerEmail, managerPass) {
+async function safeSendMail(options, fromEmail, fromPass) {
   try {
-    let transporterToUse = defaultTransporter;
+    let transporter = defaultTransporter;
 
-    // If manager’s own Gmail credentials are available, use them
-    if (managerEmail && managerPass) {
-      transporterToUse = nodemailer.createTransport({
+    if (fromEmail && fromPass) {
+      transporter = nodemailer.createTransport({
         host: "smtp.gmail.com",
         port: 587,
         secure: false,
-        auth: { user: managerEmail, pass: managerPass },
+        auth: { user: fromEmail, pass: fromPass },
       });
     }
 
-    await transporterToUse.sendMail(options);
-    console.log(`📨 Mail sent from ${options.from} → ${options.to}`);
+    await transporter.sendMail(options);
+    console.log(`📨 Mail sent: ${options.subject}`);
   } catch (e) {
     console.error("❌ Email send failed:", e?.message || e);
   }
@@ -98,10 +97,10 @@ async function safeSendMail(options, managerEmail, managerPass) {
 
 async function getTicketWithEmployeeEmail(id) {
   const [rows] = await pool.query(
-    `SELECT t.*, u.email AS employee_email
+    `SELECT t.*, u.email AS employee_email 
      FROM tickets t
      LEFT JOIN users u ON u.username = t.username
-     WHERE t.id = ? LIMIT 1`,
+     WHERE t.id=? LIMIT 1`,
     [id]
   );
   return rows[0] || null;
@@ -118,34 +117,7 @@ async function getManagerEmail(username) {
 // ======================================================
 // 🌐 GENERAL ROUTES
 // ======================================================
-
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
-
-app.get("/api/ip", (req, res) => {
-  const ip = (req.headers["x-forwarded-for"] || req.ip || "")
-    .toString()
-    .split(",")[0]
-    .trim();
-  res.json({ ip });
-});
-
-app.get("/api/employees/find", async (req, res) => {
-  try {
-    const { key } = req.query;
-    if (!key) return res.status(400).json({ message: "key required" });
-
-    const [rows] = await pool.query(
-      "SELECT * FROM users WHERE emp_id = ? OR username = ? LIMIT 1",
-      [key, key]
-    );
-
-    if (!rows.length) return res.status(404).json({ message: "Not found" });
-    res.json(rows[0]);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: "Server error" });
-  }
-});
 
 // ======================================================
 // 👤 LOGIN (Manager + Technician only)
@@ -156,13 +128,12 @@ app.post("/api/login", async (req, res) => {
     return res.status(400).json({ error: "Username & password required" });
 
   try {
-    const [rows] = await pool.query("SELECT * FROM users WHERE username = ?", [
+    const [rows] = await pool.query("SELECT * FROM users WHERE username=?", [
       username,
     ]);
-
-    if (!rows.length) return res.status(401).json({ error: "Invalid username" });
-
+    if (!rows.length) return res.status(401).json({ error: "Invalid user" });
     const user = rows[0];
+
     if (user.role === "EMPLOYEE")
       return res.status(403).json({ error: "Employee login not allowed" });
     if (user.password !== password)
@@ -224,10 +195,7 @@ app.post("/api/tickets", async (req, res) => {
     if (Array.isArray(reporting_to)) reporting_to = reporting_to[0];
     const sys_ip =
       ip_address ||
-      (req.headers["x-forwarded-for"] || req.ip || "")
-        .toString()
-        .split(",")[0]
-        .trim();
+      (req.headers["x-forwarded-for"] || req.ip || "").toString().split(",")[0].trim();
 
     await pool.query(
       `INSERT INTO tickets
@@ -256,6 +224,7 @@ app.post("/api/tickets", async (req, res) => {
 // 👨‍💼 MANAGER ROUTES
 // ======================================================
 
+// 🔹 Get Tickets
 app.get("/api/manager/tickets", auth, async (req, res) => {
   try {
     if (req.user.role !== "MANAGER")
@@ -265,9 +234,9 @@ app.get("/api/manager/tickets", auth, async (req, res) => {
     const { status } = req.query;
 
     const params = [manager];
-    let sql = "SELECT * FROM tickets WHERE reporting_to = ?";
+    let sql = "SELECT * FROM tickets WHERE reporting_to=?";
     if (status && status !== "ALL") {
-      sql += " AND status = ?";
+      sql += " AND status=?";
       params.push(status);
     }
     sql += " ORDER BY created_at DESC";
@@ -275,12 +244,60 @@ app.get("/api/manager/tickets", auth, async (req, res) => {
     const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (e) {
-    console.error(e);
     res.status(500).json({ error: "Failed to load tickets" });
   }
 });
 
-// 🔹 Assign Ticket (Manager’s Gmail)
+
+// ======================================================
+// 👤 EMPLOYEE FIND (For InputForm.jsx)
+// ======================================================
+app.get("/api/employees/find", async (req, res) => {
+  try {
+    const { key } = req.query;
+    if (!key) return res.status(400).json({ message: "key required" });
+
+    // ✅ Use correct table name depending on your DB structure
+    // If your employee data is in 'users' table → keep 'users'
+    // If you have a separate 'employees' table → change to 'employees'
+
+    const [rows] = await pool.query(
+      "SELECT * FROM users WHERE emp_id = ? OR username = ? LIMIT 1",
+      [key, key]
+    );
+
+    if (!rows.length) return res.status(404).json({ message: "Not found" });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error("❌ /api/employees/find error:", e);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+// ======================================================
+// 👨‍🔧 MANAGER — Technician List
+// ======================================================
+app.get("/api/manager/technicians", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "MANAGER")
+      return res.status(403).json({ error: "Access denied" });
+
+    // 🔹 Fetch all users with TECHNICIAN role
+    const [rows] = await pool.query(
+      "SELECT username, full_name, email FROM users WHERE role='TECHNICIAN' ORDER BY full_name ASC"
+    );
+
+    res.json(rows);
+  } catch (e) {
+    console.error("❌ Technician list failed:", e);
+    res.status(500).json({ error: "Failed to load technicians" });
+  }
+});
+
+
+
+// 🔹 Assign Ticket → send email to technician only
 app.patch("/api/manager/tickets/:id/assign", auth, async (req, res) => {
   try {
     if (req.user.role !== "MANAGER")
@@ -288,40 +305,36 @@ app.patch("/api/manager/tickets/:id/assign", auth, async (req, res) => {
 
     const { id } = req.params;
     const { assigned_to, start_date, end_date, priority, remarks } = req.body;
-
     if (!assigned_to)
       return res.status(400).json({ error: "assigned_to required" });
 
     await pool.query(
-      `UPDATE tickets 
-       SET assigned_to=?, start_date=?, end_date=?, priority=?, remarks=?, status='ASSIGNED'
+      `UPDATE tickets SET assigned_to=?, start_date=?, end_date=?, priority=?, remarks=?, status='ASSIGNED'
        WHERE id=?`,
-      [
-        assigned_to,
-        start_date || null,
-        end_date || null,
-        priority || null,
-        remarks || null,
-        id,
-      ]
+      [assigned_to, start_date || null, end_date || null, priority || null, remarks || null, id]
     );
 
-    const t = await getTicketWithEmployeeEmail(id);
+    // 🔹 Send mail only to Technician (not employee)
+    const [tech] = await pool.query(
+      "SELECT email FROM users WHERE full_name=? OR username=? LIMIT 1",
+      [assigned_to, assigned_to]
+    );
     const mgr = await getManagerEmail(req.user.username);
+    const t = await getTicketWithEmployeeEmail(id);
 
-    if (t?.employee_email && mgr?.email) {
+    if (tech?.length && tech[0].email && mgr?.email) {
       await safeSendMail(
         {
           from: mgr.email,
-          to: t.employee_email,
-          subject: `Ticket #${t.id} Assigned`,
+          to: tech[0].email,
+          subject: "Ticket Assigned by Manager",
           html: `
-            <p>Hi ${t.full_name || t.username},</p>
-            <p>Your ticket <strong>#${t.id}</strong> has been <strong>ASSIGNED</strong> by ${req.user.display_name}.</p>
-            <p><strong>Technician:</strong> ${t.assigned_to || assigned_to}</p>
-            <p><strong>Priority:</strong> ${t.priority || priority || "-"}</p>
-            <p><strong>Schedule:</strong> ${start_date || "-"} to ${end_date || "-"}</p>
-            <p><strong>Issue:</strong> ${t.issue_text || "-"}</p>
+            <p>Dear ${assigned_to},</p>
+            <p>A new issue has been assigned to you by <strong>${req.user.display_name}</strong>.</p>
+            <p><strong>Employee:</strong> ${t.full_name}<br/>
+            <strong>Issue:</strong> ${t.issue_text}<br/>
+            <strong>Start:</strong> ${start_date || "-"} <br/>
+            <strong>End:</strong> ${end_date || "-"}</p>
             <p>— Rapid Ticketing System</p>
           `,
         },
@@ -337,17 +350,13 @@ app.patch("/api/manager/tickets/:id/assign", auth, async (req, res) => {
   }
 });
 
-// 🔹 Reject Ticket (Manager’s Gmail)
+// 🔹 Reject Ticket → email to employee + enable delete
 app.patch("/api/manager/tickets/:id/reject", auth, async (req, res) => {
   try {
     if (req.user.role !== "MANAGER")
       return res.status(403).json({ error: "Access denied" });
 
     const { id } = req.params;
-    const [rows] = await pool.query("SELECT id FROM tickets WHERE id=?", [id]);
-    if (!rows.length)
-      return res.status(404).json({ error: "Ticket not found" });
-
     await pool.query("UPDATE tickets SET status='REJECTED' WHERE id=?", [id]);
 
     const t = await getTicketWithEmployeeEmail(id);
@@ -358,11 +367,11 @@ app.patch("/api/manager/tickets/:id/reject", auth, async (req, res) => {
         {
           from: mgr.email,
           to: t.employee_email,
-          subject: `Ticket #${t.id} Rejected`,
+          subject: "Rapid Ticketing",
           html: `
-            <p>Hi ${t.full_name || t.username},</p>
-            <p>Your ticket <strong>#${t.id}</strong> has been <strong>REJECTED</strong> by ${req.user.display_name}.</p>
-            <p><strong>Issue:</strong> ${t.issue_text || "-"}</p>
+            <p>Dear ${t.full_name},</p>
+            <p>Your submitted ticket (#${t.id}) is not valuable and has been <strong>REJECTED</strong>.</p>
+            <p>— From: ${req.user.display_name}</p>
             <p>— Rapid Ticketing System</p>
           `,
         },
@@ -373,48 +382,54 @@ app.patch("/api/manager/tickets/:id/reject", auth, async (req, res) => {
 
     res.json({ ok: true, message: "Ticket rejected successfully" });
   } catch (e) {
-    console.error("❌ Reject failed:", e.message);
-    res
-      .status(500)
-      .json({ error: "Reject failed", details: e.message || String(e) });
+    console.error(e);
+    res.status(500).json({ error: "Reject failed" });
   }
 });
 
-// 🔹 Get Technician List (NEW ✅)
-app.get("/api/manager/technicians", auth, async (req, res) => {
+
+
+
+// 🔹 Manager Delete Rejected Ticket
+app.delete("/api/manager/tickets/:id/delete", auth, async (req, res) => {
   try {
     if (req.user.role !== "MANAGER")
       return res.status(403).json({ error: "Access denied" });
 
-    const [rows] = await pool.query(
-      "SELECT username, full_name FROM users WHERE role = 'TECHNICIAN'"
-    );
+    const { id } = req.params;
+    const [rows] = await pool.query("SELECT status FROM tickets WHERE id=?", [
+      id,
+    ]);
+    if (!rows.length)
+      return res.status(404).json({ error: "Ticket not found" });
+    if (rows[0].status !== "REJECTED")
+      return res
+        .status(400)
+        .json({ error: "Only rejected tickets can be deleted" });
 
-    const techList = rows.map((r) => ({
-      username: r.username,
-      name: r.full_name,
-    }));
-
-    res.json(techList);
+    await pool.query("DELETE FROM tickets WHERE id=?", [id]);
+    res.json({ ok: true, message: "Rejected ticket deleted successfully" });
   } catch (e) {
-    console.error("❌ Failed to load technicians:", e);
-    res.status(500).json({ error: "Failed to load technicians" });
+    console.error(e);
+    res.status(500).json({ error: "Delete failed" });
   }
 });
 
-// ✅ Added missing route
+// ======================================================
+// 👷 TECHNICIAN ROUTES
+// ======================================================
 app.get("/api/technician/my-tickets", auth, async (req, res) => {
   try {
     if (req.user.role !== "TECHNICIAN")
       return res.status(403).json({ error: "Access denied" });
 
-    const tech = req.user.display_name; // technician name from JWT
+    const tech = req.user.display_name;
     const { status } = req.query;
-    const params = [tech];
 
-    let sql = "SELECT * FROM tickets WHERE assigned_to = ?";
+    const params = [tech];
+    let sql = "SELECT * FROM tickets WHERE assigned_to=?";
     if (status && status !== "ALL") {
-      sql += " AND status = ?";
+      sql += " AND status=?";
       params.push(status);
     }
     sql += " ORDER BY created_at DESC";
@@ -422,15 +437,11 @@ app.get("/api/technician/my-tickets", auth, async (req, res) => {
     const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (e) {
-    console.error("❌ Failed to load technician tickets:", e);
     res.status(500).json({ error: "Failed to load tickets" });
   }
 });
 
-
-// ======================================================
-// 👷 TECHNICIAN ROUTES
-// ======================================================
+// 🔹 Technician Status Update
 app.patch("/api/technician/tickets/:id/status", auth, async (req, res) => {
   try {
     if (req.user.role !== "TECHNICIAN")
@@ -439,37 +450,50 @@ app.patch("/api/technician/tickets/:id/status", auth, async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
     const valid = ["PENDING", "INPROCESS", "COMPLETE"];
-
     if (!valid.includes(status))
       return res.status(400).json({ error: "Invalid status" });
 
     await pool.query("UPDATE tickets SET status=? WHERE id=?", [status, id]);
 
-    if (status === "COMPLETE") {
-      const t = await getTicketWithEmployeeEmail(id);
-      if (t?.employee_email) {
-        await safeSendMail(
-          {
-            from: process.env.SMTP_USER,
-            to: t.employee_email,
-            subject: `Ticket #${t.id} Completed`,
-            html: `
-              <p>Hi ${t.full_name || t.username},</p>
-              <p>Your ticket <strong>#${t.id}</strong> has been <strong>COMPLETED</strong>.</p>
-              <p><strong>Issue:</strong> ${t.issue_text || "-"}</p>
-              <p>If anything remains unresolved, reply to this email or open a new ticket.</p>
-              <p>— Rapid Ticketing System</p>
-            `,
-          },
-          null,
-          null
-        );
-      }
+    const t = await getTicketWithEmployeeEmail(id);
+
+    // Email logic:
+    if (status === "INPROCESS" && t?.employee_email) {
+      await safeSendMail(
+        {
+          from: process.env.SMTP_USER,
+          to: t.employee_email,
+          subject: "Issue Taken Over",
+          html: `
+            <p>Dear ${t.full_name},</p>
+            <p>Your issue has been taken over by technician <strong>${req.user.display_name}</strong>.</p>
+            <p>— Rapid Ticketing System</p>
+          `,
+        },
+        null,
+        null
+      );
+    }
+
+    if (status === "COMPLETE" && t?.employee_email) {
+      await safeSendMail(
+        {
+          from: process.env.SMTP_USER,
+          to: t.employee_email,
+          subject: "Issue Fixed",
+          html: `
+            <p>Dear ${t.full_name},</p>
+            <p>Your issue (Ticket #${t.id}) has been fixed by technician <strong>${req.user.display_name}</strong>.</p>
+            <p>— Rapid Ticketing System</p>
+          `,
+        },
+        null,
+        null
+      );
     }
 
     res.json({ ok: true, message: "Status updated successfully" });
   } catch (e) {
-    console.error(e);
     res.status(500).json({ error: "Failed to update status" });
   }
 });
