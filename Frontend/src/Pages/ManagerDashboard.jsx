@@ -128,7 +128,9 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
       if (res.ok) {
         await loadTickets();
         await loadCounts();
-        alert(`✅ Ticket ${selectedTicket.id} assigned to ${selectedTechnician}`);
+        alert(
+          `✅ Ticket ${selectedTicket.id} assigned to ${selectedTechnician}`
+        );
         closeModal();
       } else {
         const data = await res.json();
@@ -164,28 +166,7 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
     }
   };
 
-  // 🔹 Delete Ticket (for rejected ones only)
-  const handleDelete = async (ticketId) => {
-    if (!window.confirm("⚠️ Are you sure you want to permanently delete this rejected ticket?")) return;
 
-    try {
-      const res = await fetch(`${API}/api/manager/tickets/${ticketId}/delete`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (res.ok) {
-        alert("🗑️ Ticket deleted successfully");
-        await loadTickets();
-        await loadCounts();
-      } else {
-        const data = await res.json();
-        alert(data?.error || "Delete failed");
-      }
-    } catch (err) {
-      console.error("❌ Delete error:", err);
-    }
-  };
 
   const closeModal = () => {
     setShowModal(false);
@@ -226,7 +207,7 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
       {/* Header */}
       <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
         <h3 className="m-0 text-primary fw-bold">
-          Manager Dashboard — {managerName}
+          ADMIN Dashboard — {managerName}
         </h3>
 
         {/* Filter Buttons */}
@@ -313,10 +294,17 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
                     </span>
                   </td>
                   <td>{t.assigned_to || "-"}</td>
+
                   <td className="d-flex gap-2 flex-wrap">
+                    {/* 🔹 Assign button */}
                     <button
                       className="btn btn-sm btn-outline-primary"
-                      disabled={t.status === "ASSIGNED" || t.status === "FIXED"}
+                      disabled={
+                        t.status === "ASSIGNED" ||
+                        t.status === "FIXED" ||
+                        t.status === "REJECTED" ||
+                        t.status === "COMPLETE"
+                      }
                       onClick={() => {
                         setSelectedTicket(t);
                         setShowModal(true);
@@ -325,24 +313,23 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
                       Assign
                     </button>
 
+                    {/* 🔹 Reject button */}
                     <button
                       className="btn btn-sm btn-outline-danger"
-                      disabled={t.status === "REJECTED" || t.status === "FIXED"}
+                      disabled={
+                        t.status === "REJECTED" ||
+                        t.status === "FIXED" ||
+                        t.status === "ASSIGNED" ||
+                        t.status === "COMPLETE"
+                      }
                       onClick={() => handleReject(t.id)}
                     >
                       Reject
                     </button>
 
-                    {/* ✅ Show Delete button only when Rejected */}
-                    {t.status === "REJECTED" && (
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => handleDelete(t.id)}
-                      >
-                        Delete
-                      </button>
-                    )}
+                  
                   </td>
+
                 </tr>
               ))
             )}
@@ -350,53 +337,70 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
         </table>
       </div>
 
-      {/* Issue View Modal */}
-      {showIssueModal && selectedTicket && (
-        <div
-          className="modal fade show d-block"
-          style={{ background: "rgba(0,0,0,0.5)" }}
-        >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg rounded-4">
-              <div className="modal-header bg-info text-white">
-                <h5 className="modal-title">
-                  Issue Details — {selectedTicket.emp_id}
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => setShowIssueModal(false)}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <p>
-                  <strong>Employee:</strong> {selectedTicket.full_name}
-                </p>
-                <p>
-                  <strong>Department:</strong> {selectedTicket.department}
-                </p>
-                <p>
-                  <strong>IP Address:</strong> {selectedTicket.system_ip}
-                </p>
-                <hr />
-                <p>
-                  <strong>Issue:</strong>
-                  <br />
-                  {selectedTicket.issue_text}
-                </p>
-              </div>
-              <div className="modal-footer">
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setShowIssueModal(false)}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
+     {/* Issue View Modal */}
+{showIssueModal && selectedTicket && (
+  <div
+    className="modal fade show d-block"
+    style={{ background: "rgba(0,0,0,0.5)" }}
+  >
+    <div className="modal-dialog modal-dialog-centered">
+      <div className="modal-content border-0 shadow-lg rounded-4">
+        <div className="modal-header bg-info text-white">
+          <h5 className="modal-title">
+            Issue Details — {selectedTicket.emp_id}
+          </h5>
+          <button
+            type="button"
+            className="btn-close"
+            onClick={() => setShowIssueModal(false)}
+          ></button>
         </div>
-      )}
+        <div className="modal-body">
+          <p>
+            <strong>Employee:</strong> {selectedTicket.full_name}
+          </p>
+          <p>
+            <strong>Department:</strong> {selectedTicket.department}
+          </p>
+          <p>
+            <strong>IP Address:</strong> {selectedTicket.system_ip}
+          </p>
+          <hr />
+          <p>
+            <strong>Issue:</strong>
+            <br />
+            {selectedTicket.issue_text}
+          </p>
+
+          {/* 🕓 Add these new lines */}
+          <hr />
+          <p>
+            <strong>Submitted On:</strong>{" "}
+            {selectedTicket.created_at
+              ? new Date(selectedTicket.created_at).toLocaleString()
+              : "Not Available"}
+          </p>
+
+          <p>
+            <strong>Last Updated:</strong>{" "}
+            {selectedTicket.updated_at
+              ? new Date(selectedTicket.updated_at).toLocaleString()
+              : "Not Available"}
+          </p>
+        </div>
+        <div className="modal-footer">
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowIssueModal(false)}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
 
       {/* Assign Modal */}
       {showModal && selectedTicket && (

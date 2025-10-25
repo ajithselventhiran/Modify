@@ -70,14 +70,18 @@ export default function TechnicianDashboard() {
     }
   };
 
+
+
+
   // 🔹 Status Badge Color
   const getStatusBadge = (status) => {
-    const map = {
-      ASSIGNED: "bg-warning text-dark",
-      PENDING: "bg-info text-dark",
-      INPROCESS: "bg-primary",
-      COMPLETE: "bg-success",
-    };
+ const map = {
+  ASSIGNED: "bg-warning text-dark",
+  NOT_STARTED: "bg-info text-dark",
+  INPROCESS: "bg-primary",
+  COMPLETE: "bg-success",
+};
+
     return map[status?.toUpperCase()] || "bg-secondary";
   };
 
@@ -157,35 +161,34 @@ export default function TechnicianDashboard() {
                   <td>{t.remarks || "-"}</td>
                   <td>
                     {t.status === "ASSIGNED" && (
-                      <button
-                        className="btn btn-sm btn-outline-info me-1"
-                        onClick={() => updateStatus(t.id, "PENDING")}
-                      >
-                        Pending
-                      </button>
-                    )}
+  <button
+    className="btn btn-sm btn-outline-info me-1"
+    onClick={() => updateStatus(t.id, "NOT_STARTED")}
+  >
+    Not Started
+  </button>
+)}
 
-                    {t.status === "PENDING" && (
-                      <button
-                        className="btn btn-sm btn-outline-primary me-1"
-                        onClick={() => updateStatus(t.id, "INPROCESS")}
-                      >
-                        In Process
-                      </button>
-                    )}
+{t.status === "NOT_STARTED" && (
+  <button
+    className="btn btn-sm btn-outline-primary me-1"
+    onClick={() => updateStatus(t.id, "INPROCESS")}
+  >
+    In Process
+  </button>
+)}
 
-                    {t.status === "INPROCESS" && (
-                      <button
-                        className="btn btn-sm btn-outline-success me-1"
-                        onClick={() => updateStatus(t.id, "COMPLETE")}
-                      >
-                        Complete
-                      </button>
-                    )}
+{t.status === "INPROCESS" && (
+  <button
+    className="btn btn-sm btn-outline-success me-1"
+    onClick={() => updateStatus(t.id, "COMPLETE")}
+  >
+    Complete
+  </button>
+)}
 
-                    {t.status === "COMPLETE" && (
-                      <span className="badge bg-success">Completed</span>
-                    )}
+
+
                   </td>
                 </tr>
               ))

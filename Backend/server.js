@@ -234,19 +234,28 @@ app.get("/api/manager/tickets", auth, async (req, res) => {
     const { status } = req.query;
 
     const params = [manager];
-    let sql = "SELECT * FROM tickets WHERE reporting_to=?";
+    let sql = `
+      SELECT id, emp_id, username, full_name, department, reporting_to,
+             assigned_to, system_ip, issue_text, remarks, status, priority,
+             start_date, end_date, created_at, updated_at
+      FROM tickets
+      WHERE reporting_to=?`;
+
     if (status && status !== "ALL") {
       sql += " AND status=?";
       params.push(status);
     }
+
     sql += " ORDER BY created_at DESC";
 
     const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (e) {
+    console.error("❌ Manager tickets error:", e);
     res.status(500).json({ error: "Failed to load tickets" });
   }
 });
+
 
 
 // ======================================================
@@ -350,70 +359,6 @@ app.patch("/api/manager/tickets/:id/assign", auth, async (req, res) => {
   }
 });
 
-// 🔹 Reject Ticket → email to employee + enable delete
-app.patch("/api/manager/tickets/:id/reject", auth, async (req, res) => {
-  try {
-    if (req.user.role !== "MANAGER")
-      return res.status(403).json({ error: "Access denied" });
-
-    const { id } = req.params;
-    await pool.query("UPDATE tickets SET status='REJECTED' WHERE id=?", [id]);
-
-    const t = await getTicketWithEmployeeEmail(id);
-    const mgr = await getManagerEmail(req.user.username);
-
-    if (t?.employee_email && mgr?.email) {
-      await safeSendMail(
-        {
-          from: mgr.email,
-          to: t.employee_email,
-          subject: "Rapid Ticketing",
-          html: `
-            <p>Dear ${t.full_name},</p>
-            <p>Your submitted ticket (#${t.id}) is not valuable and has been <strong>REJECTED</strong>.</p>
-            <p>— From: ${req.user.display_name}</p>
-            <p>— Rapid Ticketing System</p>
-          `,
-        },
-        mgr.email,
-        mgr.mail_pass
-      );
-    }
-
-    res.json({ ok: true, message: "Ticket rejected successfully" });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Reject failed" });
-  }
-});
-
-
-
-
-// 🔹 Manager Delete Rejected Ticket
-app.delete("/api/manager/tickets/:id/delete", auth, async (req, res) => {
-  try {
-    if (req.user.role !== "MANAGER")
-      return res.status(403).json({ error: "Access denied" });
-
-    const { id } = req.params;
-    const [rows] = await pool.query("SELECT status FROM tickets WHERE id=?", [
-      id,
-    ]);
-    if (!rows.length)
-      return res.status(404).json({ error: "Ticket not found" });
-    if (rows[0].status !== "REJECTED")
-      return res
-        .status(400)
-        .json({ error: "Only rejected tickets can be deleted" });
-
-    await pool.query("DELETE FROM tickets WHERE id=?", [id]);
-    res.json({ ok: true, message: "Rejected ticket deleted successfully" });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Delete failed" });
-  }
-});
 
 // ======================================================
 // 👷 TECHNICIAN ROUTES
@@ -449,7 +394,7 @@ app.patch("/api/technician/tickets/:id/status", auth, async (req, res) => {
 
     const { id } = req.params;
     const { status } = req.body;
-    const valid = ["PENDING", "INPROCESS", "COMPLETE"];
+    const valid = ["NOT_STARTED", "INPROCESS", "COMPLETE"];
     if (!valid.includes(status))
       return res.status(400).json({ error: "Invalid status" });
 
@@ -497,6 +442,9 @@ app.patch("/api/technician/tickets/:id/status", auth, async (req, res) => {
     res.status(500).json({ error: "Failed to update status" });
   }
 });
+
+
+
 
 // ======================================================
 // 🚀 Start Server
