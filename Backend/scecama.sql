@@ -51,3 +51,39 @@ CREATE TABLE `users` (
   KEY `idx_reporting_to` (`reporting_to`)
 ) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+
+
+-- =====================================================
+-- 4️⃣ SAMPLE DATA FOR USERS
+-- =====================================================
+INSERT INTO users (username, password, role, full_name, emp_id, department, reporting_to, email, mail_pass)
+VALUES
+-- Managers
+('venkatesan', '1234', 'MANAGER', 'Venkatesan M', 'EMP001', 'IT', NULL, 'selventhiranajith2024@gmail.com', 'hhrjuskiqtuqptck'),
+('nagarajan', '1234', 'MANAGER', 'Nagarajan M', 'EMP002', 'Maintenance', NULL, 'nagarajan@dbit.com', 'manager'),
+
+-- Technicians
+('rajkumar_tech', '1234', 'TECHNICIAN', 'Rajkumar P', 'EMP003', 'IT', 'Venkatesan M', 'rajkumar@dbit.com', 'manager'),
+('piraba', '1234', 'TECHNICIAN', 'Piraba K', 'EMP004', 'Maintenance', 'Nagarajan M', 'ambikai19790326@gmail.com', 'zsoiuiwvqngyycql'),
+
+-- Employees
+('dinesh', '1234', 'EMPLOYEE', 'Dinesh S', 'EMP005', 'IT', 'Venkatesan M', 'murugan20050922@gmail.com', 'manager'),
+('anita', '1234', 'EMPLOYEE', 'Anita R', 'EMP006', 'Maintenance', 'Nagarajan M', 'anita@dbit.com', 'manager');
+
+-- =====================================================
+-- 5️⃣ SAMPLE DATA FOR TICKETS
+-- =====================================================
+INSERT INTO tickets 
+(username, emp_id, full_name, department, reporting_to, assigned_to, system_ip, issue_text, remarks, fixed_note, status, priority, start_date, end_date)
+VALUES
+('dinesh', 'EMP005', 'Dinesh S', 'IT', 'Venkatesan M', 'Rajkumar P', '192.168.1.25', 
+ 'System not booting properly after Windows update.', 
+ 'Urgent request from IT Lab 2', 
+ 'Reinstalled Windows and updated drivers', 
+ 'FIXED', 'High', '2025-10-10', '2025-10-11'),
+
+('anita', 'EMP006', 'Anita R', 'Maintenance', 'Nagarajan M', 'Piraba K', '192.168.1.45', 
+ 'Printer not connecting to network.', 
+ 'Check before monthly report submission', 
+ NULL, 
+ 'INPROCESS', 'Medium', '2025-10-15', NULL);
