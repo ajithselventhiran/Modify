@@ -6,7 +6,7 @@ import "react-toastify/dist/ReactToastify.css";
 
 const API = "http://localhost:5000";
 
-export default function InputForm() {
+export default function TicketForm() {
   const [username, setUsername] = useState("");
   const [emp, setEmp] = useState(null);
   const [form, setForm] = useState({
@@ -18,6 +18,8 @@ export default function InputForm() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [reportingList, setReportingList] = useState([]);
+
 
   // ✅ Get Public IP
   useEffect(() => {
@@ -27,7 +29,9 @@ export default function InputForm() {
       .catch(() => setIp("Unavailable"));
   }, []);
 
-  // ✅ Search Employee
+  
+
+  // ✅ Search User
   useEffect(() => {
     if (!username.trim()) {
       setEmp(null);
@@ -41,7 +45,7 @@ export default function InputForm() {
           params: { key: username },
         });
 
-        // ✅ Found employee in users table
+        // ✅ Found user in users table
         if (data && data.emp_id) {
           setEmp(data);
 
@@ -52,7 +56,7 @@ export default function InputForm() {
             }));
           }
 
-          toast.success(`Employee data loaded for ${data.full_name}`, {
+          toast.success(`User data loaded for ${data.full_name}`, {
             autoClose: 1000,
             theme: "colored",
           });
@@ -85,6 +89,21 @@ export default function InputForm() {
     return () => clearInterval(interval);
   }, [loading]);
 
+  // ✅ Load Admin List from Backend
+useEffect(() => {
+  const fetchAdmins = async () => {
+    try {
+      const { data } = await axios.get(`${API}/api/admins`);
+      setReportingList(data);
+    } catch (err) {
+      console.error("Admin list load பண்ண முடியல:", err);
+      toast.error("⚠️ Admin list load பண்ண முடியல", { theme: "colored" });
+    }
+  };
+  fetchAdmins();
+}, []);
+
+
   // ✅ Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -103,7 +122,7 @@ export default function InputForm() {
     if (!form.issue_text.trim())
       return toast.warning("✏️ Please describe your issue before submitting.");
     if (!form.reporting_to.length)
-      return toast.warning("👤 Please select at least one manager.");
+      return toast.warning("👤 Please select at least one admin.");
 
     try {
       setLoading(true);
@@ -139,13 +158,7 @@ export default function InputForm() {
     }
   };
 
-  // ✅ Manager List (Can be fetched or static)
-  const reportingList = [
-    "Venkatesan M",
-    "Murugan R",
-    "Rajkumar P",
-    "Piraba K",
-  ];
+
 
   return (
     <div
@@ -167,7 +180,7 @@ export default function InputForm() {
           System IP: <b className="text-dark">{ip || "Fetching..."}</b>
         </p>
 
-        {/* 🔍 Employee Search */}
+        {/* 🔍 User Search */}
         <div className="card p-3 mb-4 border-0 shadow-sm">
           <div className="mb-3">
             <label className="form-label">Username</label>
@@ -200,7 +213,7 @@ export default function InputForm() {
                 />
               </div>
               <div className="col-md-6">
-                <label className="form-label">Reporting To</label>
+                <label className="form-label">Reporting To (Admin)</label>
                 <input
                   className="form-control"
                   value={emp.reporting_to || ""}
@@ -243,7 +256,7 @@ export default function InputForm() {
 
           {/* Reporting Dropdown */}
           <div className="mb-3 position-relative dropdown-container">
-            <label className="form-label d-block">Reporting To</label>
+            <label className="form-label d-block">Reporting To (Admin)</label>
             <div
               className="form-select text-start"
               style={{
@@ -257,7 +270,7 @@ export default function InputForm() {
             >
               {form.reporting_to.length
                 ? form.reporting_to.join(", ")
-                : "-- Select Manager(s) --"}
+                : "-- Select Admin(s) --"}
             </div>
 
             {dropdownOpen && (
@@ -284,7 +297,7 @@ export default function InputForm() {
                     <input
                       type="checkbox"
                       className="form-check-input"
-                      id={`mgr-${index}`}
+                      id={`admin-${index}`}
                       style={{
                         transform: "scale(1.3)",
                         cursor: "pointer",
@@ -311,7 +324,7 @@ export default function InputForm() {
 
                     <label
                       className="form-check-label"
-                      htmlFor={`mgr-${index}`}
+                      htmlFor={`admin-${index}`}
                       style={{ cursor: "pointer", flex: 1 }}
                     >
                       {person}

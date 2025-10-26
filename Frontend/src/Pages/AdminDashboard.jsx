@@ -3,7 +3,10 @@ import "bootstrap/dist/css/bootstrap.min.css";
 
 const API = "http://localhost:5000"; // 🔗 Backend API
 
-export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
+export default function AdminDashboard() {
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const managerName = user.display_name || "Admin";
+
   const [tickets, setTickets] = useState([]);
   const [technicianList, setTechnicianList] = useState([]);
   const [filter, setFilter] = useState("ALL");
@@ -30,13 +33,13 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
 
   const token = localStorage.getItem("token");
 
-  // 🔹 Load tickets assigned to this manager
+  // 🔹 Load tickets assigned to this admin
   const loadTickets = async () => {
     setLoading(true);
     try {
       const q = new URLSearchParams({ manager: managerName });
       if (filter !== "ALL") q.set("status", filter);
-      const res = await fetch(`${API}/api/manager/tickets?${q.toString()}`, {
+      const res = await fetch(`${API}/api/admin/tickets?${q.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -52,7 +55,7 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
   // 🔹 Load technician list
   const loadTechnicians = async () => {
     try {
-      const res = await fetch(`${API}/api/manager/technicians`, {
+      const res = await fetch(`${API}/api/admin/technicians`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -68,7 +71,7 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
   const loadCounts = async () => {
     try {
       const res = await fetch(
-        `${API}/api/manager/tickets/counts?manager=${encodeURIComponent(
+        `${API}/api/admin/tickets/counts?manager=${encodeURIComponent(
           managerName
         )}`,
         { headers: { Authorization: `Bearer ${token}` } }
@@ -114,7 +117,7 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
       };
 
       const res = await fetch(
-        `${API}/api/manager/tickets/${selectedTicket.id}/assign`,
+        `${API}/api/admin/tickets/${selectedTicket.id}/assign`,
         {
           method: "PATCH",
           headers: {
@@ -146,7 +149,7 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
     if (!window.confirm("Are you sure you want to reject this ticket?")) return;
 
     try {
-      const res = await fetch(`${API}/api/manager/tickets/${ticketId}/reject`, {
+      const res = await fetch(`${API}/api/admin/tickets/${ticketId}/reject`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -165,8 +168,6 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
       console.error("❌ Reject error:", err);
     }
   };
-
-
 
   const closeModal = () => {
     setShowModal(false);
@@ -326,10 +327,7 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
                     >
                       Reject
                     </button>
-
-                  
                   </td>
-
                 </tr>
               ))
             )}
@@ -337,63 +335,171 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
         </table>
       </div>
 
-     {/* Issue View Modal */}
-{showIssueModal && selectedTicket && (
+      {/* Issue View Modal */}
+      {showIssueModal && selectedTicket && (
+        <div
+          className="modal fade show d-block"
+          style={{ background: "rgba(0,0,0,0.5)" }}
+        >
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg rounded-4">
+              <div className="modal-header bg-info text-white">
+                <h5 className="modal-title">
+                  Issue Details — {selectedTicket.emp_id}
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowIssueModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>
+                  <strong>Employee:</strong> {selectedTicket.full_name}
+                </p>
+                <p>
+                  <strong>Department:</strong> {selectedTicket.department}
+                </p>
+                <p>
+                  <strong>IP Address:</strong> {selectedTicket.system_ip}
+                </p>
+                <hr />
+                <p>
+                  <strong>Issue:</strong>
+                  <br />
+                  {selectedTicket.issue_text}
+                </p>
+
+                <hr />
+                <p>
+                  <strong>Submitted On:</strong>{" "}
+                  {selectedTicket.created_at
+                    ? new Date(selectedTicket.created_at).toLocaleString()
+                    : "Not Available"}
+                </p>
+
+                <p>
+                  <strong>Last Updated:</strong>{" "}
+                  {selectedTicket.updated_at
+                    ? new Date(selectedTicket.updated_at).toLocaleString()
+                    : "Not Available"}
+                </p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowIssueModal(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+{/* Assign Modal */}
+{showModal && selectedTicket && (
   <div
     className="modal fade show d-block"
     style={{ background: "rgba(0,0,0,0.5)" }}
   >
     <div className="modal-dialog modal-dialog-centered">
       <div className="modal-content border-0 shadow-lg rounded-4">
-        <div className="modal-header bg-info text-white">
+        <div className="modal-header bg-primary text-white">
           <h5 className="modal-title">
-            Issue Details — {selectedTicket.emp_id}
+            Assign Ticket — {selectedTicket.emp_id}
           </h5>
           <button
             type="button"
             className="btn-close"
-            onClick={() => setShowIssueModal(false)}
+            onClick={closeModal}
           ></button>
         </div>
+
         <div className="modal-body">
-          <p>
-            <strong>Employee:</strong> {selectedTicket.full_name}
-          </p>
-          <p>
-            <strong>Department:</strong> {selectedTicket.department}
-          </p>
-          <p>
-            <strong>IP Address:</strong> {selectedTicket.system_ip}
-          </p>
-          <hr />
-          <p>
-            <strong>Issue:</strong>
-            <br />
-            {selectedTicket.issue_text}
-          </p>
+          <div className="row g-3">
+            {/* Technician Dropdown */}
+            <div className="col-md-12">
+              <label className="form-label fw-semibold">
+                Assign To (Technician)
+              </label>
+              <select
+                className="form-select"
+                value={selectedTechnician}
+                onChange={(e) => setSelectedTechnician(e.target.value)}
+              >
+                <option value="">Select Technician</option>
+                {technicianList.map((t) => (
+                  <option
+                    key={t.username}
+                    value={t.name || t.full_name || t.username}
+                  >
+                    {t.name || t.full_name || t.username} ({t.username})
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* 🕓 Add these new lines */}
-          <hr />
-          <p>
-            <strong>Submitted On:</strong>{" "}
-            {selectedTicket.created_at
-              ? new Date(selectedTicket.created_at).toLocaleString()
-              : "Not Available"}
-          </p>
+            {/* Start Date */}
+            <div className="col-md-6">
+              <label className="form-label fw-semibold">Start Date</label>
+              <input
+                type="date"
+                className="form-control"
+                value={startDate || new Date().toISOString().split("T")[0]} // 👈 Default today
+                min={new Date().toISOString().split("T")[0]} // 👈 Block past dates
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
+{/* End Date */}
+<div className="col-md-6">
+  <label className="form-label fw-semibold">End Date</label>
+  <input
+    type="date"
+    className="form-control"
+    value={endDate || ""} // ✅ Empty by default (user selects)
+    min={startDate || new Date().toISOString().split("T")[0]} // 🚫 Can’t select before start date
+    onChange={(e) => setEndDate(e.target.value)}
+  />
+</div>
 
-          <p>
-            <strong>Last Updated:</strong>{" "}
-            {selectedTicket.updated_at
-              ? new Date(selectedTicket.updated_at).toLocaleString()
-              : "Not Available"}
-          </p>
+
+
+            {/* Priority */}
+            <div className="col-md-6">
+              <label className="form-label fw-semibold">Priority</label>
+              <select
+                className="form-select"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+              >
+                <option value="">Select Priority</option>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
+            </div>
+
+            {/* Remarks */}
+            <div className="col-md-6">
+              <label className="form-label fw-semibold">Remarks</label>
+              <textarea
+                rows="2"
+                className="form-control"
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+              ></textarea>
+            </div>
+          </div>
         </div>
+
         <div className="modal-footer">
-          <button
-            className="btn btn-secondary"
-            onClick={() => setShowIssueModal(false)}
-          >
-            Close
+          <button className="btn btn-secondary" onClick={closeModal}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" onClick={assign}>
+            Assign
           </button>
         </div>
       </div>
@@ -402,106 +508,8 @@ export default function ManagerDashboard({ managerName = "Venkatesan M" }) {
 )}
 
 
-      {/* Assign Modal */}
-      {showModal && selectedTicket && (
-        <div
-          className="modal fade show d-block"
-          style={{ background: "rgba(0,0,0,0.5)" }}
-        >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg rounded-4">
-              <div className="modal-header bg-primary text-white">
-                <h5 className="modal-title">
-                  Assign Ticket — {selectedTicket.emp_id}
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={closeModal}
-                ></button>
-              </div>
 
-              <div className="modal-body">
-                <div className="row g-3">
-                  <div className="col-md-12">
-                    <label className="form-label fw-semibold">
-                      Assign To (Technician)
-                    </label>
-                    <select
-                      className="form-select"
-                      value={selectedTechnician}
-                      onChange={(e) => setSelectedTechnician(e.target.value)}
-                    >
-                      <option value="">Select Technician</option>
-                      {technicianList.map((t) => (
-                        <option
-                          key={t.username}
-                          value={t.name || t.full_name || t.username}
-                        >
-                          {t.name || t.full_name || t.username} ({t.username})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
 
-                  <div className="col-md-6">
-                    <label className="form-label fw-semibold">Start Date</label>
-                    <input
-                      type="date"
-                      className="form-control"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="col-md-6">
-                    <label className="form-label fw-semibold">End Date</label>
-                    <input
-                      type="date"
-                      className="form-control"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="col-md-6">
-                    <label className="form-label fw-semibold">Priority</label>
-                    <select
-                      className="form-select"
-                      value={priority}
-                      onChange={(e) => setPriority(e.target.value)}
-                    >
-                      <option value="">Select Priority</option>
-                      <option value="Low">Low</option>
-                      <option value="Medium">Medium</option>
-                      <option value="High">High</option>
-                    </select>
-                  </div>
-
-                  <div className="col-md-6">
-                    <label className="form-label fw-semibold">Remarks</label>
-                    <textarea
-                      rows="2"
-                      className="form-control"
-                      value={remarks}
-                      onChange={(e) => setRemarks(e.target.value)}
-                    ></textarea>
-                  </div>
-                </div>
-              </div>
-
-              <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={closeModal}>
-                  Cancel
-                </button>
-                <button className="btn btn-primary" onClick={assign}>
-                  Assign
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -59,12 +59,12 @@ export default function LoginPage() {
 
       // ✅ Role-based redirect
       setTimeout(() => {
-        if (user.role === "MANAGER") {
-          navigate("/manager", { replace: true });
+        if (user.role === "ADMIN") {
+          navigate("/admin", { replace: true });
         } else if (user.role === "TECHNICIAN") {
           navigate("/technician", { replace: true });
         } else {
-          toast.error("Employee login not allowed.");
+          toast.error("User login not allowed.");
         }
       }, 1000);
     } catch (err) {
@@ -92,7 +92,7 @@ export default function LoginPage() {
         }}
       >
         <h3 className="text-center mb-4 fw-bold text-primary">
-          Manager / Technician Login
+          Admin / Technician Login
         </h3>
 
         <form onSubmit={handleSubmit}>

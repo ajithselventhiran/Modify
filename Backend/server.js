@@ -1,7 +1,3 @@
-// ======================================================
-// 🔧 RAPID TICKETING BACKEND (Manager + Technician roles)
-// ======================================================
-
 import express from "express";
 import cors from "cors";
 import mysql from "mysql2/promise";
@@ -26,7 +22,7 @@ const pool = mysql.createPool({
   connectionLimit: 10,
 });
 
-// ✅ Test Database Connection
+//  Test Database Connection
 (async () => {
   try {
     const conn = await pool.getConnection();
@@ -39,11 +35,17 @@ const pool = mysql.createPool({
   }
 })();
 
+
+// Health Testing
+app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+
+
 // ---------------------- JWT Config ----------------------
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret123";
 const JWT_EXPIRES = "2d";
 
-// 🔒 Middleware for Auth
+// Middleware for Auth
 function auth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: "No token" });
@@ -106,21 +108,110 @@ async function getTicketWithEmployeeEmail(id) {
   return rows[0] || null;
 }
 
-async function getManagerEmail(username) {
+async function getAdminEmail(username) {
   const [rows] = await pool.query(
-    "SELECT email, mail_pass FROM users WHERE username=? AND role='MANAGER' LIMIT 1",
+    "SELECT email, mail_pass FROM users WHERE username=? AND role='ADMIN' LIMIT 1",
     [username]
   );
   return rows[0] || null;
 }
 
-// ======================================================
-// 🌐 GENERAL ROUTES
-// ======================================================
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 // ======================================================
-// 👤 LOGIN (Manager + Technician only)
+// User — Create Ticket (Multiple Admins Supported)
+// ======================================================
+app.post("/api/tickets", async (req, res) => {
+  try {
+    let {
+      emp_id,
+      username,
+      full_name,
+      department,
+      reporting_to,
+      issue_text,
+      remarks,
+      ip_address,
+    } = req.body;
+
+    if (
+      !emp_id ||
+      !username ||
+      !full_name ||
+      !department ||
+      !reporting_to ||
+      !issue_text
+    ) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const sys_ip =
+      ip_address ||
+      (req.headers["x-forwarded-for"] || req.ip || "")
+        .toString()
+        .split(",")[0]
+        .trim();
+
+    // ✅ Handle multiple admins — insert one ticket for each selected admin
+    const admins = Array.isArray(reporting_to) ? reporting_to : [reporting_to];
+
+    for (const admin of admins) {
+      await pool.query(
+        `INSERT INTO tickets
+         (emp_id, username, full_name, department, reporting_to, system_ip, issue_text, remarks, status)
+         VALUES (?,?,?,?,?,?,?,?, 'NOT_ASSIGNED')`,
+        [
+          emp_id,
+          username,
+          full_name,
+          department,
+          admin,
+          sys_ip,
+          issue_text,
+          remarks || null,
+        ]
+      );
+    }
+
+    res.json({ ok: true, message: "Ticket created successfully for all selected admins" });
+  } catch (e) {
+    console.error("❌ Ticket creation error:", e);
+    res.status(500).json({ message: "Failed to create ticket" });
+  }
+});
+
+
+
+
+// ======================================================
+// User FIND (For InputForm.jsx)
+// ======================================================
+app.get("/api/employees/find", async (req, res) => {
+  try {
+    const { key } = req.query;
+    if (!key) return res.status(400).json({ message: "key required" });
+
+    const [rows] = await pool.query(
+      "SELECT * FROM users WHERE emp_id = ? OR username = ? LIMIT 1",
+      [key, key]
+    );
+
+    if (!rows.length) return res.status(404).json({ message: "Not found" });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error("❌ /api/employees/find error:", e);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+
+
+
+
+
+
+// ======================================================
+// LOGIN (Admin + Technician )
 // ======================================================
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
@@ -134,8 +225,8 @@ app.post("/api/login", async (req, res) => {
     if (!rows.length) return res.status(401).json({ error: "Invalid user" });
     const user = rows[0];
 
-    if (user.role === "EMPLOYEE")
-      return res.status(403).json({ error: "Employee login not allowed" });
+    if (user.role === "USER")
+      return res.status(403).json({ error: "User login not allowed" });
     if (user.password !== password)
       return res.status(401).json({ error: "Invalid password" });
 
@@ -165,75 +256,22 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+
+
 // ======================================================
-// 🧾 EMPLOYEE — Create Ticket
+//  ADMIN ROUTES
 // ======================================================
-app.post("/api/tickets", async (req, res) => {
+
+// Get Tickets
+app.get("/api/admin/tickets", auth, async (req, res) => {
   try {
-    let {
-      emp_id,
-      username,
-      full_name,
-      department,
-      reporting_to,
-      issue_text,
-      remarks,
-      ip_address,
-    } = req.body;
-
-    if (
-      !emp_id ||
-      !username ||
-      !full_name ||
-      !department ||
-      !reporting_to ||
-      !issue_text
-    ) {
-      return res.status(400).json({ message: "Missing required fields" });
-    }
-
-    if (Array.isArray(reporting_to)) reporting_to = reporting_to[0];
-    const sys_ip =
-      ip_address ||
-      (req.headers["x-forwarded-for"] || req.ip || "").toString().split(",")[0].trim();
-
-    await pool.query(
-      `INSERT INTO tickets
-       (emp_id, username, full_name, department, reporting_to, system_ip, issue_text, remarks, status)
-       VALUES (?,?,?,?,?,?,?,?, 'NOT_ASSIGNED')`,
-      [
-        emp_id,
-        username,
-        full_name,
-        department,
-        reporting_to,
-        sys_ip,
-        issue_text,
-        remarks || null,
-      ]
-    );
-
-    res.json({ ok: true, message: "Ticket created successfully" });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: "Failed to create ticket" });
-  }
-});
-
-// ======================================================
-// 👨‍💼 MANAGER ROUTES
-// ======================================================
-
-// 🔹 Get Tickets
-app.get("/api/manager/tickets", auth, async (req, res) => {
-  try {
-    if (req.user.role !== "MANAGER")
+    if (req.user.role !== "ADMIN")
       return res.status(403).json({ error: "Access denied" });
 
-    const manager = req.user.display_name;
+    const admin = req.user.display_name;
     const { status } = req.query;
 
-    const params = [manager];
+    const params = [admin];
     let sql = `
       SELECT id, emp_id, username, full_name, department, reporting_to,
              assigned_to, system_ip, issue_text, remarks, status, priority,
@@ -251,48 +289,40 @@ app.get("/api/manager/tickets", auth, async (req, res) => {
     const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (e) {
-    console.error("❌ Manager tickets error:", e);
+    console.error("❌ Admin tickets error:", e);
     res.status(500).json({ error: "Failed to load tickets" });
   }
 });
 
 
-
+////
 // ======================================================
-// 👤 EMPLOYEE FIND (For InputForm.jsx)
+// 🔹 Admin list API (Frontend dropdown-க்கு)
 // ======================================================
-app.get("/api/employees/find", async (req, res) => {
+app.get("/api/admins", async (req, res) => {
   try {
-    const { key } = req.query;
-    if (!key) return res.status(400).json({ message: "key required" });
-
-    // ✅ Use correct table name depending on your DB structure
-    // If your employee data is in 'users' table → keep 'users'
-    // If you have a separate 'employees' table → change to 'employees'
-
     const [rows] = await pool.query(
-      "SELECT * FROM users WHERE emp_id = ? OR username = ? LIMIT 1",
-      [key, key]
+      "SELECT full_name FROM users WHERE role='ADMIN'"
     );
-
-    if (!rows.length) return res.status(404).json({ message: "Not found" });
-    res.json(rows[0]);
-  } catch (e) {
-    console.error("❌ /api/employees/find error:", e);
-    res.status(500).json({ message: "Server error" });
+    res.json(rows.map((r) => r.full_name));
+  } catch (err) {
+    console.error("❌ Error fetching admins:", err.message);
+    res.status(500).json({ message: "Server error fetching admin list" });
   }
 });
 
 
+
+
 // ======================================================
-// 👨‍🔧 MANAGER — Technician List
+//  ADMIN — Technician List
 // ======================================================
-app.get("/api/manager/technicians", auth, async (req, res) => {
+app.get("/api/admin/technicians", auth, async (req, res) => {
   try {
-    if (req.user.role !== "MANAGER")
+    if (req.user.role !== "ADMIN")
       return res.status(403).json({ error: "Access denied" });
 
-    // 🔹 Fetch all users with TECHNICIAN role
+    //  Fetch all users with TECHNICIAN role
     const [rows] = await pool.query(
       "SELECT username, full_name, email FROM users WHERE role='TECHNICIAN' ORDER BY full_name ASC"
     );
@@ -306,10 +336,10 @@ app.get("/api/manager/technicians", auth, async (req, res) => {
 
 
 
-// 🔹 Assign Ticket → send email to technician only
-app.patch("/api/manager/tickets/:id/assign", auth, async (req, res) => {
+//  Admin Assign Ticket → send email to technician (NodeMailer)
+app.patch("/api/admin/tickets/:id/assign", auth, async (req, res) => {
   try {
-    if (req.user.role !== "MANAGER")
+    if (req.user.role !== "ADMIN")
       return res.status(403).json({ error: "Access denied" });
 
     const { id } = req.params;
@@ -323,32 +353,31 @@ app.patch("/api/manager/tickets/:id/assign", auth, async (req, res) => {
       [assigned_to, start_date || null, end_date || null, priority || null, remarks || null, id]
     );
 
-    // 🔹 Send mail only to Technician (not employee)
     const [tech] = await pool.query(
       "SELECT email FROM users WHERE full_name=? OR username=? LIMIT 1",
       [assigned_to, assigned_to]
     );
-    const mgr = await getManagerEmail(req.user.username);
+    const admin = await getAdminEmail(req.user.username);
     const t = await getTicketWithEmployeeEmail(id);
 
-    if (tech?.length && tech[0].email && mgr?.email) {
+    if (tech?.length && tech[0].email && admin?.email) {
       await safeSendMail(
         {
-          from: mgr.email,
+          from: admin.email,
           to: tech[0].email,
-          subject: "Ticket Assigned by Manager",
+          subject: "Ticket Assigned by Admin",
           html: `
             <p>Dear ${assigned_to},</p>
             <p>A new issue has been assigned to you by <strong>${req.user.display_name}</strong>.</p>
-            <p><strong>Employee:</strong> ${t.full_name}<br/>
+            <p><strong>User:</strong> ${t.full_name}<br/>
             <strong>Issue:</strong> ${t.issue_text}<br/>
             <strong>Start:</strong> ${start_date || "-"} <br/>
             <strong>End:</strong> ${end_date || "-"}</p>
             <p>— Rapid Ticketing System</p>
           `,
         },
-        mgr.email,
-        mgr.mail_pass
+        admin.email,
+        admin.mail_pass
       );
     }
 
@@ -360,8 +389,11 @@ app.patch("/api/manager/tickets/:id/assign", auth, async (req, res) => {
 });
 
 
+
+
+
 // ======================================================
-// 👷 TECHNICIAN ROUTES
+//  TECHNICIAN ROUTES
 // ======================================================
 app.get("/api/technician/my-tickets", auth, async (req, res) => {
   try {
@@ -385,6 +417,7 @@ app.get("/api/technician/my-tickets", auth, async (req, res) => {
     res.status(500).json({ error: "Failed to load tickets" });
   }
 });
+
 
 // 🔹 Technician Status Update
 app.patch("/api/technician/tickets/:id/status", auth, async (req, res) => {
@@ -447,7 +480,7 @@ app.patch("/api/technician/tickets/:id/status", auth, async (req, res) => {
 
 
 // ======================================================
-// 🚀 Start Server
+// Start Server
 // ======================================================
 const port = Number(process.env.PORT || 5000);
 app.listen(port, () =>
