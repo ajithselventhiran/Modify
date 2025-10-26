@@ -8,6 +8,13 @@ export default function TechnicianDashboard() {
   const [filter, setFilter] = useState("ALL");
   const [loading, setLoading] = useState(false);
   const [techName, setTechName] = useState("");
+  const [counts, setCounts] = useState({
+    ALL: 0,
+    ASSIGNED: 0,
+    NOT_STARTED: 0,
+    INPROCESS: 0,
+    COMPLETE: 0,
+  });
 
   // 🔹 Load Technician Info from LocalStorage
   useEffect(() => {
@@ -23,28 +30,41 @@ export default function TechnicianDashboard() {
       const q = new URLSearchParams();
       if (filter !== "ALL") q.set("status", filter);
 
-      const res = await fetch(
-        `${API}/api/technician/my-tickets?${q.toString()}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const res = await fetch(`${API}/api/technician/my-tickets?${q.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) throw new Error("Failed to load tickets");
       const data = await res.json();
       setTickets(Array.isArray(data) ? data : []);
+      calculateCounts(data);
     } catch (err) {
       console.error("❌ Ticket load failed:", err);
       setTickets([]);
+      setCounts({ ALL: 0, ASSIGNED: 0, NOT_STARTED: 0, INPROCESS: 0, COMPLETE: 0 });
     } finally {
       setLoading(false);
     }
+  };
+
+  // 🔹 Calculate Ticket Counts Locally
+  const calculateCounts = (data) => {
+    const grouped = data.reduce(
+      (acc, t) => {
+        acc.ALL += 1;
+        const s = (t.status || "").toUpperCase();
+        if (acc[s] !== undefined) acc[s] += 1;
+        return acc;
+      },
+      { ALL: 0, ASSIGNED: 0, NOT_STARTED: 0, INPROCESS: 0, COMPLETE: 0 }
+    );
+    setCounts(grouped);
   };
 
   useEffect(() => {
     loadTickets();
   }, [filter]);
 
-  // 🔹 Update Ticket Status (ASSIGNED → PENDING → INPROCESS → COMPLETE)
+  // 🔹 Update Ticket Status
   const updateStatus = async (id, newStatus) => {
     const token = localStorage.getItem("token");
     try {
@@ -70,131 +90,187 @@ export default function TechnicianDashboard() {
     }
   };
 
-
-
-
-  // 🔹 Status Badge Color
+  // 🔹 Status Badge Colors
   const getStatusBadge = (status) => {
- const map = {
-  ASSIGNED: "bg-warning text-dark",
-  NOT_STARTED: "bg-info text-dark",
-  INPROCESS: "bg-primary",
-  COMPLETE: "bg-success",
-};
-
+    const map = {
+      ASSIGNED: "bg-warning text-dark",
+      NOT_STARTED: "bg-info text-dark",
+      INPROCESS: "bg-primary",
+      COMPLETE: "bg-success",
+    };
     return map[status?.toUpperCase()] || "bg-secondary";
   };
 
-  return (
-    <div className="container py-4">
-      {/* Header */}
-      <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-        <h3 className="m-0 text-success fw-bold">
-          Technician Dashboard — {techName}
-        </h3>
+  const statusOrder = ["ALL", "ASSIGNED", "NOT_STARTED", "INPROCESS", "COMPLETE"];
 
-        {/* Filter Buttons */}
-        <div className="d-flex gap-2 flex-wrap">
-          {["ALL", "ASSIGNED", "PENDING", "INPROCESS", "COMPLETE"].map((s) => (
+  return (
+    <div
+      className="container-fluid py-4"
+      style={{
+        background: "linear-gradient(135deg, #f5f8ff, #e9ecef)",
+        minHeight: "100vh",
+      }}
+    >
+      {/* HEADER */}
+      <div
+        className="p-4 mb-4 rounded-4 text-white shadow-sm"
+        style={{
+          background: "linear-gradient(90deg, #28a745, #20c997)",
+        }}
+      >
+        <div className="d-flex justify-content-between align-items-center flex-wrap">
+          <h3 className="fw-bold mb-0">
+            Technician Dashboard — {techName}
+          </h3>
+          <small>{new Date().toLocaleString("en-IN")}</small>
+        </div>
+      </div>
+
+      {/* STATUS CARDS ROW */}
+      <div className="d-flex flex-wrap justify-content-center gap-3 mb-3">
+        {statusOrder.map((key) => (
+          <div
+            key={key}
+            className={`text-center text-white p-3 shadow-sm ${getStatusBadge(
+              key
+            )}`}
+            style={{
+              borderRadius: "12px",
+              width: "15%",
+              minWidth: "120px",
+              transition: "transform 0.3s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.05)")}
+            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+          >
+            <h6 className="fw-semibold text-uppercase small mb-1">
+              {key.replace("_", " ")}
+            </h6>
+            <h3 className="fw-bold mb-0">{counts[key] || 0}</h3>
+          </div>
+        ))}
+      </div>
+
+      {/* BUTTON ROW */}
+      <div className="d-flex flex-wrap justify-content-center gap-3 mb-5">
+        {statusOrder.map((s) => (
+          <div
+            key={s}
+            className="text-center"
+            style={{
+              width: "15%",
+              minWidth: "120px",
+            }}
+          >
             <button
-              key={s}
-              className={`btn btn-sm ${
+              className={`btn btn-sm w-100 fw-semibold ${
                 filter === s ? "btn-success" : "btn-outline-success"
               }`}
               onClick={() => setFilter(s)}
             >
-              {s}
+              {s} ({counts[s] || 0})
             </button>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
 
-      {/* Tickets Table */}
-      <div className="table-responsive">
-        <table className="table table-hover align-middle">
-          <thead className="table-success">
-            <tr>
-              <th>Assigned By (Manager)</th>
-              <th>Issue</th>
-              <th>Start Date</th>
-              <th>End Date</th>
-              <th>Status</th>
-              <th>Remarks</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan="7" className="text-center text-muted py-3">
-                  Loading…
-                </td>
-              </tr>
-            ) : tickets.length === 0 ? (
-              <tr>
-                <td colSpan="7" className="text-center text-muted py-3">
-                  No tickets found.
-                </td>
-              </tr>
-            ) : (
-              tickets.map((t) => (
-                <tr key={t.id}>
-                  <td>{t.reporting_to || "—"}</td>
-                  <td style={{ maxWidth: 320 }}>
-                    <div className="text-truncate">{t.issue_text}</div>
-                  </td>
-                  <td>
-                    {t.start_date
-                      ? new Date(t.start_date).toLocaleDateString()
-                      : "—"}
-                  </td>
-                  <td>
-                    {t.end_date
-                      ? new Date(t.end_date).toLocaleDateString()
-                      : "—"}
-                  </td>
-                  <td>
-                    <span className={`badge ${getStatusBadge(t.status)}`}>
-                      {t.status}
-                    </span>
-                  </td>
-                  <td>{t.remarks || "-"}</td>
-                  <td>
-                    {t.status === "ASSIGNED" && (
-  <button
-    className="btn btn-sm btn-outline-info me-1"
-    onClick={() => updateStatus(t.id, "NOT_STARTED")}
-  >
-    Not Started
-  </button>
-)}
+      {/* TABLE */}
+      <div className="card border-0 shadow-lg rounded-4">
+        <div
+          className="card-header text-white rounded-top-4"
+          style={{
+            background: "linear-gradient(90deg, #198754, #20c997)",
+          }}
+        >
+          <h5 className="mb-0 fw-semibold">My Assigned Tickets</h5>
+        </div>
 
-{t.status === "NOT_STARTED" && (
-  <button
-    className="btn btn-sm btn-outline-primary me-1"
-    onClick={() => updateStatus(t.id, "INPROCESS")}
-  >
-    In Process
-  </button>
-)}
-
-{t.status === "INPROCESS" && (
-  <button
-    className="btn btn-sm btn-outline-success me-1"
-    onClick={() => updateStatus(t.id, "COMPLETE")}
-  >
-    Complete
-  </button>
-)}
-
-
-
-                  </td>
+        <div className="card-body p-0">
+          <div className="table-responsive">
+            <table className="table table-hover align-middle mb-0">
+              <thead className="table-success text-center">
+                <tr>
+                  <th>Assigned By (Manager)</th>
+                  <th>Issue</th>
+                  <th>Start Date</th>
+                  <th>End Date</th>
+                  <th>Status</th>
+                  <th>Remarks</th>
+                  <th>Action</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="7" className="text-center py-3 text-muted">
+                      Loading…
+                    </td>
+                  </tr>
+                ) : tickets.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="text-center py-3 text-muted">
+                      No tickets found.
+                    </td>
+                  </tr>
+                ) : (
+                  tickets.map((t) => (
+                    <tr key={t.id} className="text-center">
+                      <td>{t.reporting_to || "—"}</td>
+                      <td style={{ maxWidth: 320 }}>
+                        <div className="text-truncate">{t.issue_text}</div>
+                      </td>
+                      <td>
+                        {t.start_date
+                          ? new Date(t.start_date).toLocaleDateString()
+                          : "—"}
+                      </td>
+                      <td>
+                        {t.end_date
+                          ? new Date(t.end_date).toLocaleDateString()
+                          : "—"}
+                      </td>
+                      <td>
+                        <span
+                          className={`badge ${getStatusBadge(t.status)} px-3 py-2`}
+                        >
+                          {t.status}
+                        </span>
+                      </td>
+                      <td>{t.remarks || "-"}</td>
+                      <td>
+                        {/* ACTION BUTTONS */}
+                        {t.status === "ASSIGNED" && (
+                          <button
+                            className="btn btn-sm btn-outline-info me-1"
+                            onClick={() => updateStatus(t.id, "NOT_STARTED")}
+                          >
+                            Not Started
+                          </button>
+                        )}
+                        {t.status === "NOT_STARTED" && (
+                          <button
+                            className="btn btn-sm btn-outline-primary me-1"
+                            onClick={() => updateStatus(t.id, "INPROCESS")}
+                          >
+                            In Process
+                          </button>
+                        )}
+                        {t.status === "INPROCESS" && (
+                          <button
+                            className="btn btn-sm btn-outline-success me-1"
+                            onClick={() => updateStatus(t.id, "COMPLETE")}
+                          >
+                            Complete
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );
