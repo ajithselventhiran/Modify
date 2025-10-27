@@ -79,16 +79,15 @@ defaultTransporter.verify().then(
 // ---------------------- Helper Functions ----------------------
 async function safeSendMail(options, fromEmail, fromPass) {
   try {
-    let transporter = defaultTransporter;
-
-    if (fromEmail && fromPass) {
-      transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 587,
-        secure: false,
-        auth: { user: fromEmail, pass: fromPass },
-      });
-    }
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: {
+        user: fromEmail,
+        pass: fromPass,
+      },
+    });
 
     await transporter.sendMail(options);
     console.log(`📨 Mail sent: ${options.subject}`);
@@ -96,6 +95,7 @@ async function safeSendMail(options, fromEmail, fromPass) {
     console.error("❌ Email send failed:", e?.message || e);
   }
 }
+
 
 async function getTicketWithEmployeeEmail(id) {
   const [rows] = await pool.query(
@@ -376,31 +376,40 @@ app.patch("/api/admin/tickets/:id/assign", auth, async (req, res) => {
 
     const { id } = req.params;
     const { assigned_to, start_date, end_date, priority, remarks } = req.body;
+
     if (!assigned_to)
       return res.status(400).json({ error: "assigned_to required" });
 
+    // Update ticket
     await pool.query(
-      `UPDATE tickets SET assigned_to=?, start_date=?, end_date=?, priority=?, remarks=?, status='ASSIGNED'
+      `UPDATE tickets 
+       SET assigned_to=?, start_date=?, end_date=?, priority=?, remarks=?, status='ASSIGNED'
        WHERE id=?`,
       [assigned_to, start_date || null, end_date || null, priority || null, remarks || null, id]
     );
 
-    const [tech] = await pool.query(
+    // Get technician and admin details
+    const [techRows] = await pool.query(
       "SELECT email FROM users WHERE full_name=? OR username=? LIMIT 1",
       [assigned_to, assigned_to]
     );
-    const admin = await getAdminEmail(req.user.username);
+    const [adminRows] = await pool.query(
+      "SELECT email, mail_pass FROM users WHERE username=? LIMIT 1",
+      [req.user.username]
+    );
+    const tech = techRows[0];
+    const admin = adminRows[0];
     const t = await getTicketWithEmployeeEmail(id);
 
-    if (tech?.length && tech[0].email && admin?.email) {
+    if (tech?.email && admin?.email && admin?.mail_pass) {
       await safeSendMail(
         {
           from: admin.email,
-          to: tech[0].email,
+          to: tech.email,
           subject: "Ticket Assigned by Admin",
           html: `
             <p>Dear ${assigned_to},</p>
-            <p>A new issue has been assigned to you by <strong>${req.user.display_name}</strong>.</p>
+            <p>A new issue has been assigned by <strong>${req.user.display_name}</strong>.</p>
             <p><strong>User:</strong> ${t.full_name}<br/>
             <strong>Issue:</strong> ${t.issue_text}<br/>
             <strong>Start:</strong> ${start_date || "-"} <br/>
@@ -413,12 +422,13 @@ app.patch("/api/admin/tickets/:id/assign", auth, async (req, res) => {
       );
     }
 
-    res.json({ ok: true, message: "Ticket assigned successfully" });
+    res.json({ ok: true, message: "Ticket assigned and mail sent successfully" });
   } catch (e) {
-    console.error(e);
+    console.error("❌ Admin assign error:", e);
     res.status(500).json({ error: "Assign failed" });
   }
 });
+
 
 
 
@@ -462,57 +472,65 @@ app.patch("/api/technician/tickets/:id/status", auth, async (req, res) => {
     if (!valid.includes(status))
       return res.status(400).json({ error: "Invalid status" });
 
-    // 🔸 Update ticket with optional fix note
+    // Update ticket
     if (status === "COMPLETE")
       await pool.query("UPDATE tickets SET status=?, fixed_note=? WHERE id=?", [status, fixed_note, id]);
     else
       await pool.query("UPDATE tickets SET status=? WHERE id=?", [status, id]);
 
+    // Get ticket + technician info
     const t = await getTicketWithEmployeeEmail(id);
+    const [techRows] = await pool.query(
+      "SELECT email, mail_pass FROM users WHERE username=? LIMIT 1",
+      [req.user.username]
+    );
+    const tech = techRows[0];
 
-    // 🔹 Email to Employee when INPROCESS
+    if (!tech?.email || !tech?.mail_pass)
+      return res.status(400).json({ error: "Technician mail info missing" });
+
     if (status === "INPROCESS" && t?.employee_email) {
       await safeSendMail(
         {
-          from: process.env.SMTP_USER,
+          from: tech.email,
           to: t.employee_email,
           subject: "Issue Taken Over",
           html: `
             <p>Dear ${t.full_name},</p>
-            <p>Your issue has been taken over by technician <strong>${req.user.display_name}</strong>.</p>
+            <p>Your issue has been taken over by <strong>${req.user.display_name}</strong>.</p>
             <p>— Rapid Ticketing System</p>
           `,
         },
-        null,
-        null
+        tech.email,
+        tech.mail_pass
       );
     }
 
-    // 🔹 Email to Employee when COMPLETE
     if (status === "COMPLETE" && t?.employee_email) {
       await safeSendMail(
         {
-          from: process.env.SMTP_USER,
+          from: tech.email,
           to: t.employee_email,
-          subject: `Issue Fixed by Technician ${req.user.display_name}`,
+          subject: `Issue Fixed by ${req.user.display_name}`,
           html: `
             <p>Dear ${t.full_name},</p>
-            <p>Your issue ("${t.issue_text}") has been marked as <strong>COMPLETE</strong> by technician <strong>${req.user.display_name}</strong>.</p>
+            <p>Your issue "${t.issue_text}" marked as <strong>COMPLETE</strong>.</p>
             <p><strong>Technician Note:</strong><br/>${fixed_note || "No remarks provided."}</p>
-            <p>— Rapid Ticketing System</p>
+            <p>— From: ${req.user.display_name}</p>
           `,
         },
-        null,
-        null
+        tech.email,
+        tech.mail_pass
       );
     }
 
-    res.json({ ok: true, message: "Status updated successfully" });
+    res.json({ ok: true, message: "Status updated and mail sent" });
   } catch (e) {
     console.error("❌ Technician status update error:", e);
     res.status(500).json({ error: "Failed to update status" });
   }
 });
+
 
 
 // 🔹 Technician Reject Ticket → sends email to Admin
@@ -524,39 +542,40 @@ app.patch("/api/technician/tickets/:id/reject", auth, async (req, res) => {
     const { id } = req.params;
     const { subject, message } = req.body;
 
-    // Find ticket info
     const [ticketRows] = await pool.query("SELECT * FROM tickets WHERE id=?", [id]);
     if (!ticketRows.length) return res.status(404).json({ error: "Ticket not found" });
-
     const t = ticketRows[0];
 
-    // Update DB status + reason
     await pool.query("UPDATE tickets SET status='REJECTED', fixed_note=? WHERE id=?", [message, id]);
 
-    // Find Admin email (based on reporting_to name)
     const [adminRows] = await pool.query(
       "SELECT email FROM users WHERE full_name=? AND role='ADMIN' LIMIT 1",
       [t.reporting_to]
     );
+    const [techRows] = await pool.query(
+      "SELECT email, mail_pass FROM users WHERE username=? LIMIT 1",
+      [req.user.username]
+    );
     const admin = adminRows[0];
+    const tech = techRows[0];
 
-    if (admin?.email) {
+    if (admin?.email && tech?.email && tech?.mail_pass) {
       await safeSendMail(
         {
-          from: process.env.SMTP_USER,
+          from: tech.email,
           to: admin.email,
           subject: subject || `Ticket Rejected by ${req.user.display_name}`,
           html: `
             <p>Dear ${t.reporting_to},</p>
-            <p>Technician <strong>${req.user.display_name}</strong> has rejected the following ticket:</p>
+            <p>Technician <strong>${req.user.display_name}</strong> rejected ticket:</p>
             <p><strong>User:</strong> ${t.full_name}<br/>
             <strong>Issue:</strong> ${t.issue_text}</p>
             <p><strong>Reason:</strong><br/>${message || "(No message provided)"}</p>
             <p>— Rapid Ticketing System</p>
           `,
         },
-        null,
-        null
+        tech.email,
+        tech.mail_pass
       );
     }
 
@@ -566,6 +585,7 @@ app.patch("/api/technician/tickets/:id/reject", auth, async (req, res) => {
     res.status(500).json({ error: "Reject process failed" });
   }
 });
+
 
 
 
