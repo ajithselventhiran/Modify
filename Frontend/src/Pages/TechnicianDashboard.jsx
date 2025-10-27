@@ -19,6 +19,7 @@ export default function TechnicianDashboard() {
   // 🔹 New States for Modals
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [currentTicket, setCurrentTicket] = useState(null);
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
@@ -152,9 +153,7 @@ export default function TechnicianDashboard() {
         }}
       >
         <div className="d-flex justify-content-between align-items-center flex-wrap">
-          <h3 className="fw-bold mb-0">
-            Technician Dashboard — {techName}
-          </h3>
+          <h3 className="fw-bold mb-0">Technician Dashboard — {techName}</h3>
           <small>{new Date().toLocaleString("en-IN")}</small>
         </div>
       </div>
@@ -164,9 +163,7 @@ export default function TechnicianDashboard() {
         {statusOrder.map((key) => (
           <div
             key={key}
-            className={`text-center text-white p-3 shadow-sm ${getStatusBadge(
-              key
-            )}`}
+            className={`text-center text-white p-3 shadow-sm ${getStatusBadge(key)}`}
             style={{
               borderRadius: "12px",
               width: "15%",
@@ -184,17 +181,10 @@ export default function TechnicianDashboard() {
         ))}
       </div>
 
-      {/* BUTTON ROW */}
+      {/* FILTER BUTTONS */}
       <div className="d-flex flex-wrap justify-content-center gap-3 mb-5">
         {statusOrder.map((s) => (
-          <div
-            key={s}
-            className="text-center"
-            style={{
-              width: "15%",
-              minWidth: "120px",
-            }}
-          >
+          <div key={s} className="text-center" style={{ width: "15%", minWidth: "120px" }}>
             <button
               className={`btn btn-sm w-100 fw-semibold ${
                 filter === s ? "btn-success" : "btn-outline-success"
@@ -224,11 +214,11 @@ export default function TechnicianDashboard() {
               <thead className="table-success text-center">
                 <tr>
                   <th>Assigned By (Manager)</th>
-                  <th>Issue</th>
                   <th>Start Date</th>
                   <th>End Date</th>
                   <th>Status</th>
                   <th>Remarks</th>
+                  <th>Issue</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -249,55 +239,57 @@ export default function TechnicianDashboard() {
                   tickets.map((t) => (
                     <tr key={t.id} className="text-center">
                       <td>{t.reporting_to || "—"}</td>
-                      <td style={{ maxWidth: 320 }}>
-                        <div className="text-truncate">{t.issue_text}</div>
-                      </td>
+
+                      {/* ✅ Updated Start & End Dates */}
                       <td>
-                        {t.start_date
-                          ? new Date(t.start_date).toLocaleDateString()
-                          : "—"}
+                        <span className="badge bg-light text-dark border">
+                          {t.start_date && t.start_date !== "0000-00-00"
+  ? new Date(t.start_date).toLocaleDateString("en-IN")
+  : "—"}
+
+                        </span>
                       </td>
-                      <td>
-                        {t.end_date
-                          ? new Date(t.end_date).toLocaleDateString()
-                          : "—"}
-                      </td>
+
                       <td>
                         <span
-                          className={`badge ${getStatusBadge(t.status)} px-3 py-2`}
+                          className={`badge ${
+                            t.end_date && new Date(t.end_date) < new Date()
+                              ? "bg-danger text-white"
+                              : "bg-light text-dark border"
+                          }`}
                         >
+                          {t.end_date
+                            ? new Date(t.end_date).toLocaleDateString("en-IN")
+                            : "—"}
+                        </span>
+                      </td>
+
+                      <td>
+                        <span className={`badge ${getStatusBadge(t.status)} px-3 py-2`}>
                           {t.status}
                         </span>
                       </td>
                       <td>{t.remarks || "-"}</td>
                       <td>
+                        <button
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={() => {
+                            setCurrentTicket(t);
+                            setShowDetailModal(true);
+                          }}
+                        >
+                          View
+                        </button>
+                      </td>
+                      <td>
                         {/* ACTION BUTTONS */}
                         {t.status === "ASSIGNED" && (
-                          <button
-                            className="btn btn-sm btn-outline-info me-1"
-                            onClick={() => updateStatus(t.id, "NOT_STARTED")}
-                          >
-                            Not Started
-                          </button>
-                        )}
-                        {t.status === "NOT_STARTED" && (
-                          <button
-                            className="btn btn-sm btn-outline-primary me-1"
-                            onClick={() => updateStatus(t.id, "INPROCESS")}
-                          >
-                            In Process
-                          </button>
-                        )}
-                        {t.status === "INPROCESS" && (
                           <>
                             <button
-                              className="btn btn-sm btn-outline-success me-1"
-                              onClick={() => {
-                                setCurrentTicket(t);
-                                setShowCompleteModal(true);
-                              }}
+                              className="btn btn-sm btn-outline-info me-1"
+                              onClick={() => updateStatus(t.id, "NOT_STARTED")}
                             >
-                              Complete
+                              Not Started
                             </button>
                             <button
                               className="btn btn-sm btn-outline-danger"
@@ -310,6 +302,44 @@ export default function TechnicianDashboard() {
                             </button>
                           </>
                         )}
+
+                        {t.status === "NOT_STARTED" && (
+                          <>
+                            <button
+                              className="btn btn-sm btn-outline-primary me-1"
+                              onClick={() => updateStatus(t.id, "INPROCESS")}
+                            >
+                              In Process
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => {
+                                setCurrentTicket(t);
+                                setShowRejectModal(true);
+                              }}
+                            >
+                              Reject
+                            </button>
+                          </>
+                        )}
+
+                        {t.status === "INPROCESS" && (
+                          <button
+                            className="btn btn-sm btn-outline-success"
+                            onClick={() => {
+                              setCurrentTicket(t);
+                              setShowCompleteModal(true);
+                            }}
+                          >
+                            Complete
+                          </button>
+                        )}
+
+                        {t.status === "COMPLETE" && (
+                          <button className="btn btn-sm btn-success" disabled>
+                            Completed
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -319,6 +349,38 @@ export default function TechnicianDashboard() {
           </div>
         </div>
       </div>
+
+      {/* 👁️ View Issue Modal */}
+      {showDetailModal && currentTicket && (
+        <div className="modal fade show d-block" tabIndex="-1">
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header bg-secondary text-white">
+                <h5 className="modal-title">Ticket Details</h5>
+                <button className="btn-close" onClick={() => setShowDetailModal(false)}></button>
+              </div>
+              <div className="modal-body">
+                <p><strong>Assigned By:</strong> {currentTicket.reporting_to}</p>
+                <p><strong>Issue:</strong> {currentTicket.issue_text}</p>
+                <p><strong>Start Date:</strong> {currentTicket.start_date ? new Date(currentTicket.start_date).toLocaleDateString("en-IN") : "—"}</p>
+                <p><strong>End Date:</strong> {currentTicket.end_date ? new Date(currentTicket.end_date).toLocaleDateString("en-IN") : "—"}</p>
+                <p><strong>Remarks:</strong> {currentTicket.remarks || "—"}</p>
+                <p>
+                  <strong>Status:</strong>{" "}
+                  <span className={`badge ${getStatusBadge(currentTicket.status)} px-3 py-2`}>
+                    {currentTicket.status}
+                  </span>
+                </p>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowDetailModal(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ✅ Complete Modal */}
       {showCompleteModal && (

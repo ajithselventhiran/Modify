@@ -13,11 +13,11 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [counts, setCounts] = useState({
     ALL: 0,
+    NOT_ASSIGNED: 0,
     ASSIGNED: 0,
     PENDING: 0,
     INPROCESS: 0,
     COMPLETE: 0,
-    FIXED: 0,
     REJECTED: 0,
   });
 
@@ -66,32 +66,30 @@ export default function AdminDashboard() {
   };
 
   // 🔹 Load ticket counts by status
+  // 🔹 Load ticket counts by status
   const loadCounts = async () => {
     try {
-      const res = await fetch(
-        `${API}/api/admin/tickets/counts?manager=${encodeURIComponent(
-          managerName
-        )}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await fetch(`${API}/api/admin/tickets/counts`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
 
       // 🧮 Add ALL = total of all statuses
       const total =
+        (data?.NOT_ASSIGNED || 0) +
         (data?.ASSIGNED || 0) +
         (data?.PENDING || 0) +
         (data?.INPROCESS || 0) +
         (data?.COMPLETE || 0) +
-        (data?.FIXED || 0) +
         (data?.REJECTED || 0);
 
       setCounts({
         ALL: total,
+        NOT_ASSIGNED: data?.NOT_ASSIGNED || 0,
         ASSIGNED: data?.ASSIGNED || 0,
         PENDING: data?.PENDING || 0,
         INPROCESS: data?.INPROCESS || 0,
         COMPLETE: data?.COMPLETE || 0,
-        FIXED: data?.FIXED || 0,
         REJECTED: data?.REJECTED || 0,
       });
     } catch (err) {
@@ -106,11 +104,14 @@ export default function AdminDashboard() {
     try {
       const body = {
         assigned_to: selectedTechnician,
-        start_date: startDate,
-        end_date: endDate,
-        priority,
-        remarks,
+        start_date: startDate
+          ? startDate
+          : new Date().toISOString().split("T")[0],
+        end_date: endDate || null,
+        priority: priority || "Medium",
+        remarks: remarks || null,
       };
+
       const res = await fetch(
         `${API}/api/admin/tickets/${selectedTicket.id}/assign`,
         {
@@ -125,7 +126,9 @@ export default function AdminDashboard() {
       if (res.ok) {
         await loadTickets();
         await loadCounts();
-        alert(`✅ Ticket ${selectedTicket.id} assigned to ${selectedTechnician}`);
+        alert(
+          `✅ Ticket ${selectedTicket.id} assigned to ${selectedTechnician}`
+        );
         closeModal();
       } else {
         const data = await res.json();
@@ -171,11 +174,11 @@ export default function AdminDashboard() {
   const getStatusBadge = (status) => {
     const map = {
       ALL: "bg-secondary",
+      NOT_ASSIGNED: "bg-info text-dark",
       ASSIGNED: "bg-warning text-dark",
-      PENDING: "bg-info text-dark",
+      PENDING: "bg-dark text-dark",
       INPROCESS: "bg-primary",
       COMPLETE: "bg-success",
-      FIXED: "bg-dark",
       REJECTED: "bg-danger",
     };
     return map[status?.toUpperCase()] || "bg-secondary";
@@ -192,11 +195,11 @@ export default function AdminDashboard() {
 
   const statusOrder = [
     "ALL",
+    "NOT_ASSIGNED",
     "ASSIGNED",
     "PENDING",
     "INPROCESS",
     "COMPLETE",
-    "FIXED",
     "REJECTED",
   ];
 
@@ -235,7 +238,9 @@ export default function AdminDashboard() {
               minWidth: "120px",
               transition: "transform 0.3s",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.05)")}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.transform = "scale(1.05)")
+            }
             onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
           >
             <h6 className="fw-semibold text-uppercase small mb-1">
@@ -287,10 +292,10 @@ export default function AdminDashboard() {
                   <th>Employee ID</th>
                   <th>Employee</th>
                   <th>Department</th>
-                  <th>Issue</th>
                   <th>IP</th>
                   <th>Status</th>
                   <th>Assigned To</th>
+                  <th>Issue</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -317,6 +322,19 @@ export default function AdminDashboard() {
                         <small className="text-muted">{t.username}</small>
                       </td>
                       <td>{t.department}</td>
+                      <td>{t.system_ip || "-"}</td>
+                      <td>
+                        <span
+                          className={`badge ${getStatusBadge(
+                            t.status
+                          )} px-3 py-2`}
+                        >
+                          {t.status || "Not Assigned"}
+                        </span>
+                      </td>
+                      <td>{t.assigned_to || "-"}</td>
+
+                      {/* 👉 Issue column moved here */}
                       <td>
                         <button
                           className="btn btn-sm btn-outline-info"
@@ -328,22 +346,13 @@ export default function AdminDashboard() {
                           View
                         </button>
                       </td>
-                      <td>{t.system_ip || "-"}</td>
-                      <td>
-                        <span
-                          className={`badge ${getStatusBadge(t.status)} px-3 py-2`}
-                        >
-                          {t.status || "Not Assigned"}
-                        </span>
-                      </td>
-                      <td>{t.assigned_to || "-"}</td>
+
                       <td>
                         <div className="d-flex justify-content-center gap-2 flex-wrap">
                           <button
                             className="btn btn-sm btn-outline-primary"
                             disabled={[
                               "ASSIGNED",
-                              "FIXED",
                               "REJECTED",
                               "COMPLETE",
                             ].includes(t.status)}
@@ -358,7 +367,6 @@ export default function AdminDashboard() {
                             className="btn btn-sm btn-outline-danger"
                             disabled={[
                               "REJECTED",
-                              "FIXED",
                               "ASSIGNED",
                               "COMPLETE",
                             ].includes(t.status)}
@@ -417,12 +425,6 @@ export default function AdminDashboard() {
                     ? new Date(selectedTicket.created_at).toLocaleString()
                     : "Not Available"}
                 </p>
-                <p>
-                  <strong>Last Updated:</strong>{" "}
-                  {selectedTicket.updated_at
-                    ? new Date(selectedTicket.updated_at).toLocaleString()
-                    : "Not Available"}
-                </p>
               </div>
               <div className="modal-footer">
                 <button
@@ -477,7 +479,9 @@ export default function AdminDashboard() {
                     <input
                       type="date"
                       className="form-control"
-                      value={startDate || new Date().toISOString().split("T")[0]}
+                      value={
+                        startDate || new Date().toISOString().split("T")[0]
+                      }
                       min={new Date().toISOString().split("T")[0]}
                       onChange={(e) => setStartDate(e.target.value)}
                     />
@@ -492,6 +496,7 @@ export default function AdminDashboard() {
                       onChange={(e) => setEndDate(e.target.value)}
                     />
                   </div>
+
                   <div className="col-md-6">
                     <label className="form-label fw-semibold">Priority</label>
                     <select

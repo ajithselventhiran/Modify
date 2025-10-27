@@ -20,7 +20,6 @@ export default function TicketForm() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [reportingList, setReportingList] = useState([]);
 
-
   // ✅ Get Public IP
   useEffect(() => {
     axios
@@ -29,15 +28,12 @@ export default function TicketForm() {
       .catch(() => setIp("Unavailable"));
   }, []);
 
-  
-
   // ✅ Search User
   useEffect(() => {
     if (!username.trim()) {
       setEmp(null);
       return;
     }
-
     const timer = setTimeout(async () => {
       try {
         setLoading(true);
@@ -45,31 +41,25 @@ export default function TicketForm() {
           params: { key: username },
         });
 
-        // ✅ Found user in users table
         if (data && data.emp_id) {
           setEmp(data);
-
           if (data.reporting_to && !form.reporting_to.length) {
             setForm((prev) => ({
               ...prev,
               reporting_to: [data.reporting_to],
             }));
           }
-
           toast.success(`User data loaded for ${data.full_name}`, {
             autoClose: 1000,
             theme: "colored",
           });
-        } else {
-          setEmp(null);
-        }
+        } else setEmp(null);
       } catch {
         setEmp(null);
       } finally {
         setLoading(false);
       }
     }, 500);
-
     return () => clearTimeout(timer);
   }, [username]);
 
@@ -89,27 +79,24 @@ export default function TicketForm() {
     return () => clearInterval(interval);
   }, [loading]);
 
-  // ✅ Load Admin List from Backend
-useEffect(() => {
-  const fetchAdmins = async () => {
-    try {
-      const { data } = await axios.get(`${API}/api/admins`);
-      setReportingList(data);
-    } catch (err) {
-      console.error("Admin list load பண்ண முடியல:", err);
-      toast.error("⚠️ Admin list load பண்ண முடியல", { theme: "colored" });
-    }
-  };
-  fetchAdmins();
-}, []);
-
+  // ✅ Load Admin List
+  useEffect(() => {
+    const fetchAdmins = async () => {
+      try {
+        const { data } = await axios.get(`${API}/api/admins`);
+        setReportingList(data);
+      } catch (err) {
+        console.error("Admin list load பண்ண முடியல:", err);
+        toast.error("⚠️ Admin list load பண்ண முடியல", { theme: "colored" });
+      }
+    };
+    fetchAdmins();
+  }, []);
 
   // ✅ Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (!e.target.closest(".dropdown-container")) {
-        setDropdownOpen(false);
-      }
+      if (!e.target.closest(".dropdown-container")) setDropdownOpen(false);
     };
     document.addEventListener("click", handleClickOutside);
     return () => document.removeEventListener("click", handleClickOutside);
@@ -158,215 +145,299 @@ useEffect(() => {
     }
   };
 
-
-
   return (
-    <div
-      className="d-flex justify-content-center align-items-start min-vh-100"
-      style={{ paddingTop: "60px", paddingBottom: "40px" }}
-    >
+    <>
+      {/* 🌈 Inject your CSS styles directly */}
+      <style>
+        {`
+          body {
+            background: radial-gradient(circle at top left, #001f3f, #003366 40%, #000814 100%);
+            background-attachment: fixed;
+            font-family: "Poppins", sans-serif;
+            color: #fff;
+          }
+
+          .card {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(12px);
+            border-radius: 18px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
+          }
+
+          .form-control {
+            background: whitesmoke;
+            border: none;
+            border-radius: 10px;
+            padding: 14px;
+            color: #0b2239;
+            font-size: 1rem;
+            box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.1);
+          }
+
+          .form-control::placeholder {
+            color: #888;
+            transition: all 0.2s ease;
+          }
+
+          .form-control:focus::placeholder {
+            transform: translateY(-14px);
+            font-size: 0.8rem;
+            color: #4a90e2;
+          }
+
+          .form-control:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(41, 121, 255, 0.4);
+            background: #fff;
+          }
+
+          .form-label {
+            font-weight: 600;
+            color: #f8f9fa;
+            margin-bottom: 6px;
+            display: block;
+          }
+
+          .btn-success {
+            background: transparent;
+            color: #00eaff;
+            border: 2px solid #00eaff;
+            border-radius: 12px;
+            padding: 12px 28px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            transition: all 0.4s ease;
+            box-shadow: 0 0 10px rgba(0, 234, 255, 0.3);
+          }
+
+          .btn-success:hover {
+            background: #00eaff;
+            color: #000;
+            letter-spacing: 1px;
+            box-shadow: 0 0 20px #00eaff, 0 0 40px #00eaff;
+          }
+
+          .progress {
+            background-color: rgba(255, 255, 255, 0.3);
+          }
+
+          .progress-bar {
+            border-radius: 10px;
+          }
+
+          .dropdown-container .form-select {
+            background: whitesmoke;
+            border: none;
+            border-radius: 10px;
+            box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.1);
+          }
+
+          .dropdown-container .form-select:hover {
+            box-shadow: 0 0 5px rgba(41, 121, 255, 0.5);
+          }
+
+          .text-primary { color: #e3f2fd !important; }
+          .text-dark { color: #fff !important; }
+          .text-muted { color: #cfd8dc !important; }
+        `}
+      </style>
+
       <div
-        className="card shadow-lg p-4"
-        style={{
-          width: "600px",
-          borderRadius: "20px",
-          transform: "translateY(-20px)",
-        }}
+        className="d-flex justify-content-center align-items-start min-vh-100"
+        style={{ paddingTop: "60px", paddingBottom: "40px" }}
       >
-        <h3 className="text-center mb-3 text-primary fw-bold">
-          Rapid Ticketing System
-        </h3>
-        <p className="text-center text-muted mb-4">
-          System IP: <b className="text-dark">{ip || "Fetching..."}</b>
-        </p>
+        <div className="card shadow-lg p-4" style={{ width: "600px" }}>
+          <h3 className="text-center mb-3 text-primary fw-bold">
+            Rapid Ticketing System
+          </h3>
+          <p className="text-center text-muted mb-4">
+            System IP: <b className="text-dark">{ip || "Fetching..."}</b>
+          </p>
 
-        {/* 🔍 User Search */}
-        <div className="card p-3 mb-4 border-0 shadow-sm">
-          <div className="mb-3">
-            <label className="form-label">Username</label>
-            <input
-              className="form-control"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your username"
-            />
-          </div>
-
-          {loading && <p className="text-secondary">Searching...</p>}
-
-          {emp && (
-            <div className="row g-3 mt-1">
-              <div className="col-md-6">
-                <label className="form-label">Full Name</label>
-                <input className="form-control" value={emp.full_name} readOnly />
-              </div>
-              <div className="col-md-6">
-                <label className="form-label">Emp ID</label>
-                <input className="form-control" value={emp.emp_id} readOnly />
-              </div>
-              <div className="col-md-6">
-                <label className="form-label">Department</label>
-                <input
-                  className="form-control"
-                  value={emp.department}
-                  readOnly
-                />
-              </div>
-              <div className="col-md-6">
-                <label className="form-label">Reporting To (Admin)</label>
-                <input
-                  className="form-control"
-                  value={emp.reporting_to || ""}
-                  readOnly
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 🧾 Ticket Form */}
-        <form className="p-2" onSubmit={submitTicket}>
-          <div className="mb-3">
-            <label className="form-label">Issue / Feedback</label>
-            <textarea
-              className="form-control"
-              rows={4}
-              value={form.issue_text}
-              onChange={(e) =>
-                setForm((s) => ({ ...s, issue_text: e.target.value }))
-              }
-              placeholder="Describe your issue or feedback..."
-              required
-            />
-          </div>
-
-          {/* Remarks */}
-          <div className="mb-3">
-            <label className="form-label">Remarks (Optional)</label>
-            <input
-              type="text"
-              className="form-control"
-              value={form.remarks}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, remarks: e.target.value }))
-              }
-              placeholder="Any additional notes..."
-            />
-          </div>
-
-          {/* Reporting Dropdown */}
-          <div className="mb-3 position-relative dropdown-container">
-            <label className="form-label d-block">Reporting To (Admin)</label>
-            <div
-              className="form-select text-start"
-              style={{
-                cursor: "pointer",
-                fontSize: "1rem",
-                height: "45px",
-                display: "flex",
-                alignItems: "center",
-              }}
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-            >
-              {form.reporting_to.length
-                ? form.reporting_to.join(", ")
-                : "-- Select Admin(s) --"}
+          {/* 🔍 User Search */}
+          <div className="card p-3 mb-4 border-0 shadow-sm">
+            <div className="mb-3">
+              <label className="form-label">Username</label>
+              <input
+                className="form-control"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter your username"
+              />
             </div>
 
-            {dropdownOpen && (
-              <div
-                className="border rounded bg-white shadow mt-1 p-3"
-                style={{
-                  zIndex: 9999,
-                  maxHeight: "150px",
-                  overflowY: "auto",
-                  fontSize: "1.05rem",
-                }}
-              >
-                {reportingList.map((person, index) => (
-                  <div
-                    key={index}
-                    className="form-check py-2 px-2 d-flex align-items-center"
-                    style={{
-                      borderBottom:
-                        index !== reportingList.length - 1
-                          ? "1px solid #eee"
-                          : "none",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      className="form-check-input"
-                      id={`admin-${index}`}
-                      style={{
-                        transform: "scale(1.3)",
-                        cursor: "pointer",
-                        marginLeft: "10px",
-                        marginRight: "12px",
-                      }}
-                      checked={form.reporting_to.includes(person)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setForm((prev) => ({
-                            ...prev,
-                            reporting_to: [...prev.reporting_to, person],
-                          }));
-                        } else {
-                          setForm((prev) => ({
-                            ...prev,
-                            reporting_to: prev.reporting_to.filter(
-                              (p) => p !== person
-                            ),
-                          }));
-                        }
-                      }}
-                    />
+            {loading && <p className="text-secondary">Searching...</p>}
 
-                    <label
-                      className="form-check-label"
-                      htmlFor={`admin-${index}`}
-                      style={{ cursor: "pointer", flex: 1 }}
-                    >
-                      {person}
-                    </label>
-                  </div>
-                ))}
+            {emp && (
+              <div className="row g-3 mt-1">
+                <div className="col-md-6">
+                  <label className="form-label">Full Name</label>
+                  <input className="form-control" value={emp.full_name} readOnly />
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label">Emp ID</label>
+                  <input className="form-control" value={emp.emp_id} readOnly />
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label">Department</label>
+                  <input className="form-control" value={emp.department} readOnly />
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label">Reporting To (Admin)</label>
+                  <input
+                    className="form-control"
+                    value={emp.reporting_to || ""}
+                    readOnly
+                  />
+                </div>
               </div>
             )}
           </div>
 
-          {/* Submit Button + Progress */}
-          <div className="mt-4 text-end">
-            <button
-              type="submit"
-              className="btn btn-success fw-bold shadow-sm py-2 px-4"
-              style={{ fontSize: "1.05rem", minWidth: "160px" }}
-              disabled={loading || !emp}
-            >
-              {loading ? `Submitting... ${progress}%` : "Submit Ticket"}
-            </button>
+          {/* 🧾 Ticket Form */}
+          <form className="p-2" onSubmit={submitTicket}>
+            <div className="mb-3">
+              <label className="form-label">Issue</label>
+              <textarea
+                className="form-control"
+                rows={4}
+                value={form.issue_text}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, issue_text: e.target.value }))
+                }
+                placeholder="Describe your issue..."
+                required
+              />
+            </div>
 
-            {loading && (
+            <div className="mb-3">
+              <label className="form-label">Remarks (Optional)</label>
+              <input
+                type="text"
+                className="form-control"
+                value={form.remarks}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, remarks: e.target.value }))
+                }
+                placeholder="Any additional notes..."
+              />
+            </div>
+
+            {/* Reporting Dropdown */}
+            <div className="mb-3 position-relative dropdown-container">
+              <label className="form-label d-block">Reporting To (Admin)</label>
               <div
-                className="progress mt-2"
+                className="form-select text-start"
                 style={{
-                  height: "8px",
-                  borderRadius: "6px",
-                  width: "100%",
+                  cursor: "pointer",
+                  fontSize: "1rem",
+                  height: "45px",
+                  display: "flex",
+                  alignItems: "center",
                 }}
+                onClick={() => setDropdownOpen(!dropdownOpen)}
               >
+                {form.reporting_to.length
+                  ? form.reporting_to.join(", ")
+                  : "-- Select Admin(s) --"}
+              </div>
+
+              {dropdownOpen && (
                 <div
-                  className="progress-bar progress-bar-striped progress-bar-animated bg-success"
-                  role="progressbar"
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
-            )}
-          </div>
-        </form>
+                  className="border rounded bg-white shadow mt-1 p-3"
+                  style={{
+                    zIndex: 9999,
+                    maxHeight: "150px",
+                    overflowY: "auto",
+                    fontSize: "1.05rem",
+                  }}
+                >
+                  {reportingList.map((person, index) => (
+                    <div
+                      key={index}
+                      className="form-check py-2 px-2 d-flex align-items-center"
+                      style={{
+                        borderBottom:
+                          index !== reportingList.length - 1
+                            ? "1px solid #eee"
+                            : "none",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        id={`admin-${index}`}
+                        style={{
+                          transform: "scale(1.3)",
+                          cursor: "pointer",
+                          marginLeft: "10px",
+                          marginRight: "12px",
+                        }}
+                        checked={form.reporting_to.includes(person)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setForm((prev) => ({
+                              ...prev,
+                              reporting_to: [...prev.reporting_to, person],
+                            }));
+                          } else {
+                            setForm((prev) => ({
+                              ...prev,
+                              reporting_to: prev.reporting_to.filter(
+                                (p) => p !== person
+                              ),
+                            }));
+                          }
+                        }}
+                      />
+                      <label
+                        className="form-check-label"
+                        htmlFor={`admin-${index}`}
+                        style={{ cursor: "pointer", flex: 1 }}
+                      >
+                        {person}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-        <ToastContainer />
+            {/* Submit Button + Progress */}
+            <div className="mt-4 text-end">
+              <button
+                type="submit"
+                className="btn btn-success fw-bold shadow-sm py-2 px-4"
+                style={{ fontSize: "1.05rem", minWidth: "160px" }}
+                disabled={loading || !emp}
+              >
+                {loading ? `Submitting... ${progress}%` : "Submit Ticket"}
+              </button>
+
+              {loading && (
+                <div
+                  className="progress mt-2"
+                  style={{
+                    height: "8px",
+                    borderRadius: "6px",
+                    width: "100%",
+                  }}
+                >
+                  <div
+                    className="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                    role="progressbar"
+                    style={{ width: `${progress}%` }}
+                  ></div>
+                </div>
+              )}
+            </div>
+          </form>
+
+          <ToastContainer />
+        </div>
       </div>
-    </div>
+    </>
   );
 }

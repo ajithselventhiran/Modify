@@ -294,6 +294,38 @@ app.get("/api/admin/tickets", auth, async (req, res) => {
   }
 });
 
+// ======================================================
+// 🔹 ADMIN — Ticket Counts by Status (Dashboard cards)
+// ======================================================
+app.get("/api/admin/tickets/counts", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "ADMIN")
+      return res.status(403).json({ error: "Access denied" });
+
+    // Manager name query-ல இருந்தா அதைய use பண்ணு
+    const manager = req.query.manager || req.user.display_name;
+
+    // DB-ல அந்த managerக்கு எத்தனை status இருக்குன்னு count பண்ணுது
+    const [rows] = await pool.query(
+      `SELECT status, COUNT(*) AS count 
+       FROM tickets 
+       WHERE reporting_to = ?
+       GROUP BY status`,
+      [manager]
+    );
+
+    // result → object format-ஆ convert பண்ணுது
+    const counts = {};
+    rows.forEach((r) => (counts[r.status] = r.count));
+
+    res.json(counts);
+  } catch (e) {
+    console.error("❌ Admin counts error:", e);
+    res.status(500).json({ error: "Failed to load counts" });
+  }
+});
+
+
 
 ////
 // ======================================================
