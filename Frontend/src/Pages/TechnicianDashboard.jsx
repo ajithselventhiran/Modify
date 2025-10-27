@@ -16,6 +16,14 @@ export default function TechnicianDashboard() {
     COMPLETE: 0,
   });
 
+  // 🔹 New States for Modals
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [currentTicket, setCurrentTicket] = useState(null);
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [note, setNote] = useState("");
+
   // 🔹 Load Technician Info from LocalStorage
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -65,7 +73,7 @@ export default function TechnicianDashboard() {
   }, [filter]);
 
   // 🔹 Update Ticket Status
-  const updateStatus = async (id, newStatus) => {
+  const updateStatus = async (id, newStatus, fixed_note = "") => {
     const token = localStorage.getItem("token");
     try {
       const res = await fetch(`${API}/api/technician/tickets/${id}/status`, {
@@ -74,7 +82,7 @@ export default function TechnicianDashboard() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, fixed_note }),
       });
 
       if (res.ok) {
@@ -90,6 +98,30 @@ export default function TechnicianDashboard() {
     }
   };
 
+  // 🔹 Technician Reject Ticket
+  const rejectTicket = async (id, subject, message) => {
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`${API}/api/technician/tickets/${id}/reject`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ subject, message }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("✅ Ticket rejected and email sent to Admin");
+        await loadTickets();
+      } else {
+        alert(data.error || "❌ Reject failed");
+      }
+    } catch (e) {
+      alert("Server error during reject");
+    }
+  };
+
   // 🔹 Status Badge Colors
   const getStatusBadge = (status) => {
     const map = {
@@ -97,6 +129,7 @@ export default function TechnicianDashboard() {
       NOT_STARTED: "bg-info text-dark",
       INPROCESS: "bg-primary",
       COMPLETE: "bg-success",
+      REJECTED: "bg-danger",
     };
     return map[status?.toUpperCase()] || "bg-secondary";
   };
@@ -256,12 +289,26 @@ export default function TechnicianDashboard() {
                           </button>
                         )}
                         {t.status === "INPROCESS" && (
-                          <button
-                            className="btn btn-sm btn-outline-success me-1"
-                            onClick={() => updateStatus(t.id, "COMPLETE")}
-                          >
-                            Complete
-                          </button>
+                          <>
+                            <button
+                              className="btn btn-sm btn-outline-success me-1"
+                              onClick={() => {
+                                setCurrentTicket(t);
+                                setShowCompleteModal(true);
+                              }}
+                            >
+                              Complete
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => {
+                                setCurrentTicket(t);
+                                setShowRejectModal(true);
+                              }}
+                            >
+                              Reject
+                            </button>
+                          </>
                         )}
                       </td>
                     </tr>
@@ -272,6 +319,90 @@ export default function TechnicianDashboard() {
           </div>
         </div>
       </div>
+
+      {/* ✅ Complete Modal */}
+      {showCompleteModal && (
+        <div className="modal fade show d-block" tabIndex="-1">
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header bg-success text-white">
+                <h5 className="modal-title">Add Completion Note</h5>
+                <button className="btn-close" onClick={() => setShowCompleteModal(false)}></button>
+              </div>
+              <div className="modal-body">
+                <textarea
+                  className="form-control"
+                  rows="4"
+                  placeholder="Enter your fix note..."
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                ></textarea>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowCompleteModal(false)}>
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-success"
+                  onClick={async () => {
+                    await updateStatus(currentTicket.id, "COMPLETE", note);
+                    setNote("");
+                    setShowCompleteModal(false);
+                  }}
+                >
+                  Submit
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚫 Reject Modal */}
+      {showRejectModal && (
+        <div className="modal fade show d-block" tabIndex="-1">
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header bg-danger text-white">
+                <h5 className="modal-title">Reject Ticket</h5>
+                <button className="btn-close" onClick={() => setShowRejectModal(false)}></button>
+              </div>
+              <div className="modal-body">
+                <input
+                  type="text"
+                  className="form-control mb-2"
+                  placeholder="Subject"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                />
+                <textarea
+                  className="form-control"
+                  rows="4"
+                  placeholder="Enter rejection reason..."
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                ></textarea>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowRejectModal(false)}>
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-danger"
+                  onClick={async () => {
+                    await rejectTicket(currentTicket.id, subject, message);
+                    setSubject("");
+                    setMessage("");
+                    setShowRejectModal(false);
+                  }}
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
