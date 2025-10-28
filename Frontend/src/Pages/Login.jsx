@@ -5,14 +5,14 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-const API = "http://localhost:5000"; // 🔗 Backend API
+const API = "http://localhost:5000"; //  Backend API
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState({ username: "", password: "" });
   const [loading, setLoading] = useState(false);
 
-  // 🔑 Handle Login
+  // Handle Login
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -26,13 +26,13 @@ export default function LoginPage() {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
 
-      // 🔐 Login API
+      //  Login API
       const res = await axios.post(`${API}/api/login`, form);
       const { token, user } = res.data;
 
       if (!token || !user) throw new Error("Invalid login response");
 
-      // 🧩 OPTIONAL: fetch user contact info (email, dept, etc.) from backend
+      //  OPTIONAL: fetch user contact info (email, dept, etc.) from backend
       let contactInfo = {};
       try {
         const userRes = await axios.get(`${API}/api/employees/find`, {
@@ -47,7 +47,7 @@ export default function LoginPage() {
         console.warn("⚠️ Could not fetch contact info");
       }
 
-      // ✅ Save token + user + contact info
+      //  Save token + user + contact info
       const fullUser = { ...user, ...contactInfo };
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(fullUser));
@@ -57,7 +57,7 @@ export default function LoginPage() {
         theme: "colored",
       });
 
-      // ✅ Role-based redirect
+      //  Role-based redirect
       setTimeout(() => {
         if (user.role === "ADMIN") {
           navigate("/admin", { replace: true });

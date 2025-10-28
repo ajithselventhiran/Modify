@@ -16,7 +16,7 @@ export default function TechnicianDashboard() {
     COMPLETE: 0,
   });
 
-  // 🔹 New States for Modals
+  //  New States for Modals
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -25,11 +25,11 @@ export default function TechnicianDashboard() {
   const [message, setMessage] = useState("");
   const [note, setNote] = useState("");
 
-  // 🔹 Preloader States
+  //  Preloader States
   const [mailLoading, setMailLoading] = useState(false);
   const [mailMessage, setMailMessage] = useState("Processing...");
 
-  // 🔹 Toast Notification States
+  //  Toast Notification States
   const [toast, setToast] = useState({ show: false, type: "", text: "" });
 
   const showToast = (type, text) => {
@@ -37,13 +37,13 @@ export default function TechnicianDashboard() {
     setTimeout(() => setToast({ show: false, type: "", text: "" }), 3000);
   };
 
-  // 🔹 Load Technician Info from LocalStorage
+  //  Load Technician Info from LocalStorage
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
     setTechName(userData?.display_name || userData?.username || "Technician");
   }, []);
 
-  // 🔹 Load Tickets Assigned to Technician
+  //  Load Tickets Assigned to Technician
   const loadTickets = async () => {
     setLoading(true);
     try {
@@ -68,7 +68,7 @@ export default function TechnicianDashboard() {
     }
   };
 
-  // 🔹 Calculate Ticket Counts Locally
+  //  Calculate Ticket Counts Locally
   const calculateCounts = (data) => {
     const grouped = data.reduce(
       (acc, t) => {
@@ -86,7 +86,7 @@ export default function TechnicianDashboard() {
     loadTickets();
   }, [filter]);
 
-  // 🔹 Update Ticket Status
+  //  Update Ticket Status
   const updateStatus = async (id, newStatus, fixed_note = "") => {
     const token = localStorage.getItem("token");
     try {
@@ -117,7 +117,7 @@ export default function TechnicianDashboard() {
     }
   };
 
-  // 🔹 Technician Reject Ticket
+  //  Technician Reject Ticket
   const rejectTicket = async (id, subject, message) => {
     const token = localStorage.getItem("token");
     try {
@@ -146,7 +146,7 @@ export default function TechnicianDashboard() {
     }
   };
 
-  // 🔹 Status Badge Colors
+  //  Status Badge Colors
   const getStatusBadge = (status) => {
     const map = {
       ASSIGNED: "bg-warning text-dark",
@@ -364,7 +364,7 @@ export default function TechnicianDashboard() {
         </div>
       </div>
 
-      {/* 👁️ View Issue Modal */}
+      {/*  View Issue Modal */}
       {showDetailModal && currentTicket && (
         <div className="modal fade show d-block" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
@@ -396,7 +396,7 @@ export default function TechnicianDashboard() {
         </div>
       )}
 
-      {/* ✅ Complete Modal */}
+      {/*  Complete Modal */}
       {showCompleteModal && (
         <div className="modal fade show d-block" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
@@ -434,7 +434,7 @@ export default function TechnicianDashboard() {
         </div>
       )}
 
-      {/* 🚫 Reject Modal */}
+      {/*  Reject Modal */}
       {showRejectModal && (
         <div className="modal fade show d-block" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
@@ -480,7 +480,7 @@ export default function TechnicianDashboard() {
         </div>
       )}
 
-      {/* 🔄 Spinner Overlay */}
+      {/*  Spinner Overlay */}
       {mailLoading && (
         <div
           className="position-fixed top-0 start-0 w-100 h-100 d-flex flex-column justify-content-center align-items-center"
@@ -491,7 +491,7 @@ export default function TechnicianDashboard() {
         </div>
       )}
 
-      {/* 🔔 Toast Notification */}
+      {/*  Toast Notification */}
       {toast.show && (
         <div
           className={`toast align-items-center text-white bg-${toast.type} position-fixed top-0 end-0 m-3 show`}

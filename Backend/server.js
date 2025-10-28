@@ -429,7 +429,7 @@ app.patch("/api/admin/tickets/:id/assign", auth, async (req, res) => {
 
 
 // ======================================================
-// 🔹 ADMIN — Reject Ticket (auto mail to employee, no reason required)
+//  ADMIN — Reject Ticket (auto mail to employee, no reason required)
 // ======================================================
 app.patch("/api/admin/tickets/:id/reject", auth, async (req, res) => {
   try {
@@ -515,7 +515,7 @@ app.get("/api/technician/my-tickets", auth, async (req, res) => {
   }
 });
 
-// 🔹 Technician Status Update (Complete with Note)
+//  Technician Status Update (Complete with Note)
 app.patch("/api/technician/tickets/:id/status", auth, async (req, res) => {
   try {
     if (req.user.role !== "TECHNICIAN")

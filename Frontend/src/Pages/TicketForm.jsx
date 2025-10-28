@@ -20,7 +20,7 @@ export default function TicketForm() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [reportingList, setReportingList] = useState([]);
 
-  // ✅ Get Public IP
+  //  Get Public IP
   useEffect(() => {
     axios
       .get("https://api.ipify.org?format=json")
@@ -28,7 +28,7 @@ export default function TicketForm() {
       .catch(() => setIp("Unavailable"));
   }, []);
 
-  // ✅ Search User
+  //  Search User
   useEffect(() => {
     if (!username.trim()) {
       setEmp(null);
@@ -63,7 +63,7 @@ export default function TicketForm() {
     return () => clearTimeout(timer);
   }, [username]);
 
-  // ✅ Progress bar animation
+  //  Progress bar animation
   useEffect(() => {
     if (!loading) return;
     setProgress(0);
@@ -79,7 +79,7 @@ export default function TicketForm() {
     return () => clearInterval(interval);
   }, [loading]);
 
-  // ✅ Load Admin List
+  // Load Admin List
   useEffect(() => {
     const fetchAdmins = async () => {
       try {
@@ -93,7 +93,7 @@ export default function TicketForm() {
     fetchAdmins();
   }, []);
 
-  // ✅ Close dropdown on outside click
+  //  Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!e.target.closest(".dropdown-container")) setDropdownOpen(false);
@@ -102,7 +102,7 @@ export default function TicketForm() {
     return () => document.removeEventListener("click", handleClickOutside);
   }, []);
 
-  // ✅ Submit Ticket
+  //  Submit Ticket
   const submitTicket = async (e) => {
     e.preventDefault();
     if (!emp) return toast.error("⚠️ Please enter a valid username.");
@@ -147,7 +147,7 @@ export default function TicketForm() {
 
   return (
     <>
-      {/* 🌈 Inject your CSS styles directly */}
+      {/* Inject your CSS styles directly */}
       <style>
         {`
           body {
@@ -296,7 +296,7 @@ export default function TicketForm() {
             )}
           </div>
 
-          {/* 🧾 Ticket Form */}
+          {/*  Ticket Form */}
           <form className="p-2" onSubmit={submitTicket}>
             <div className="mb-3">
               <label className="form-label">Issue</label>

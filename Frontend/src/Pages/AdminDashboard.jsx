@@ -21,7 +21,7 @@ export default function AdminDashboard() {
     REJECTED: 0,
   });
 
-  // 🔹 Modal States
+  // Modal States
   const [showModal, setShowModal] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -33,7 +33,7 @@ export default function AdminDashboard() {
 
   const token = localStorage.getItem("token");
 
-  // 🔹 Load tickets assigned to this admin
+  //  Load tickets assigned to this admin
   const loadTickets = async () => {
     setLoading(true);
     try {
@@ -52,7 +52,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // 🔹 Load technician list
+  //  Load technician list
   const loadTechnicians = async () => {
     try {
       const res = await fetch(`${API}/api/admin/technicians`, {
@@ -65,8 +65,8 @@ export default function AdminDashboard() {
     }
   };
 
-  // 🔹 Load ticket counts by status
-  // 🔹 Load ticket counts by status
+  
+  //  Load ticket counts by status
   const loadCounts = async () => {
     try {
       const res = await fetch(`${API}/api/admin/tickets/counts`, {
@@ -74,7 +74,7 @@ export default function AdminDashboard() {
       });
       const data = await res.json();
 
-      // 🧮 Add ALL = total of all statuses
+      //  Add ALL = total of all statuses
       const total =
         (data?.NOT_ASSIGNED || 0) +
         (data?.ASSIGNED || 0) +
@@ -97,7 +97,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // 🔹 Assign Ticket
+  //  Assign Ticket
   const assign = async () => {
     if (!selectedTicket || !selectedTechnician)
       return alert("Select a technician first!");
@@ -139,7 +139,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // 🔹 Reject Ticket
+  //  Reject Ticket
  const handleReject = async (ticketId) => {
   if (!window.confirm("Are you sure you want to reject this ticket?")) return;
   try {
@@ -171,7 +171,7 @@ export default function AdminDashboard() {
     setRemarks("");
   };
 
-  // 🔹 Status badge colors
+  //  Status badge colors
   const getStatusBadge = (status) => {
     const map = {
       ALL: "bg-secondary",
@@ -335,7 +335,7 @@ export default function AdminDashboard() {
                       </td>
                       <td>{t.assigned_to || "-"}</td>
 
-                      {/* 👉 Issue column moved here */}
+                      {/*  Issue column moved here */}
                       <td>
                         <button
                           className="btn btn-sm btn-outline-info"
@@ -386,7 +386,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ISSUE & ASSIGN MODALS (same as before) */}
+      {/* ISSUE & ASSIGN MODAL */}
       {showIssueModal && selectedTicket && (
         <div
           className="modal fade show d-block"
