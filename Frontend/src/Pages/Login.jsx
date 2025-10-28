@@ -22,7 +22,7 @@ export default function LoginPage() {
     try {
       setLoading(true);
 
-      // 🧹 Clear old session before new login
+      //  Clear old session before new login
       localStorage.removeItem("token");
       localStorage.removeItem("user");
 

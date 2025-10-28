@@ -25,6 +25,18 @@ export default function TechnicianDashboard() {
   const [message, setMessage] = useState("");
   const [note, setNote] = useState("");
 
+  // 🔹 Preloader States
+  const [mailLoading, setMailLoading] = useState(false);
+  const [mailMessage, setMailMessage] = useState("Processing...");
+
+  // 🔹 Toast Notification States
+  const [toast, setToast] = useState({ show: false, type: "", text: "" });
+
+  const showToast = (type, text) => {
+    setToast({ show: true, type, text });
+    setTimeout(() => setToast({ show: false, type: "", text: "" }), 3000);
+  };
+
   // 🔹 Load Technician Info from LocalStorage
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -50,6 +62,7 @@ export default function TechnicianDashboard() {
       console.error("❌ Ticket load failed:", err);
       setTickets([]);
       setCounts({ ALL: 0, ASSIGNED: 0, NOT_STARTED: 0, INPROCESS: 0, COMPLETE: 0 });
+      showToast("danger", "Failed to load tickets");
     } finally {
       setLoading(false);
     }
@@ -77,6 +90,9 @@ export default function TechnicianDashboard() {
   const updateStatus = async (id, newStatus, fixed_note = "") => {
     const token = localStorage.getItem("token");
     try {
+      setMailLoading(true);
+      setMailMessage(`Updating ticket to ${newStatus}...`);
+
       const res = await fetch(`${API}/api/technician/tickets/${id}/status`, {
         method: "PATCH",
         headers: {
@@ -88,14 +104,16 @@ export default function TechnicianDashboard() {
 
       if (res.ok) {
         await loadTickets();
-        alert(`✅ Ticket status updated to ${newStatus}`);
+        showToast("success", `Ticket updated to ${newStatus}`);
       } else {
         const data = await res.json();
-        alert(data?.error || "❌ Status update failed");
+        showToast("danger", data?.error || "Status update failed");
       }
     } catch (e) {
       console.error(e);
-      alert("Server error while updating status");
+      showToast("danger", "Server error while updating status");
+    } finally {
+      setMailLoading(false);
     }
   };
 
@@ -103,6 +121,9 @@ export default function TechnicianDashboard() {
   const rejectTicket = async (id, subject, message) => {
     const token = localStorage.getItem("token");
     try {
+      setMailLoading(true);
+      setMailMessage("Rejecting ticket & sending mail...");
+
       const res = await fetch(`${API}/api/technician/tickets/${id}/reject`, {
         method: "PATCH",
         headers: {
@@ -113,13 +134,15 @@ export default function TechnicianDashboard() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert("✅ Ticket rejected and email sent to Admin");
+        showToast("success", "Ticket rejected and mail sent to Admin");
         await loadTickets();
       } else {
-        alert(data.error || "❌ Reject failed");
+        showToast("danger", data.error || "Reject failed");
       }
     } catch (e) {
-      alert("Server error during reject");
+      showToast("danger", "Server error during reject");
+    } finally {
+      setMailLoading(false);
     }
   };
 
@@ -239,17 +262,13 @@ export default function TechnicianDashboard() {
                   tickets.map((t) => (
                     <tr key={t.id} className="text-center">
                       <td>{t.reporting_to || "—"}</td>
-
-                      {/* ✅ Updated Start & End Dates */}
                       <td>
                         <span className="badge bg-light text-dark border">
                           {t.start_date && t.start_date !== "0000-00-00"
-  ? new Date(t.start_date).toLocaleDateString("en-IN")
-  : "—"}
-
+                            ? new Date(t.start_date).toLocaleDateString("en-IN")
+                            : "—"}
                         </span>
                       </td>
-
                       <td>
                         <span
                           className={`badge ${
@@ -263,7 +282,6 @@ export default function TechnicianDashboard() {
                             : "—"}
                         </span>
                       </td>
-
                       <td>
                         <span className={`badge ${getStatusBadge(t.status)} px-3 py-2`}>
                           {t.status}
@@ -282,7 +300,6 @@ export default function TechnicianDashboard() {
                         </button>
                       </td>
                       <td>
-                        {/* ACTION BUTTONS */}
                         {t.status === "ASSIGNED" && (
                           <>
                             <button
@@ -302,7 +319,6 @@ export default function TechnicianDashboard() {
                             </button>
                           </>
                         )}
-
                         {t.status === "NOT_STARTED" && (
                           <>
                             <button
@@ -322,7 +338,6 @@ export default function TechnicianDashboard() {
                             </button>
                           </>
                         )}
-
                         {t.status === "INPROCESS" && (
                           <button
                             className="btn btn-sm btn-outline-success"
@@ -334,7 +349,6 @@ export default function TechnicianDashboard() {
                             Complete
                           </button>
                         )}
-
                         {t.status === "COMPLETE" && (
                           <button className="btn btn-sm btn-success" disabled>
                             Completed
@@ -462,6 +476,35 @@ export default function TechnicianDashboard() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔄 Spinner Overlay */}
+      {mailLoading && (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex flex-column justify-content-center align-items-center"
+          style={{ background: "rgba(255,255,255,0.8)", zIndex: 2000 }}
+        >
+          <div className="spinner-border text-success mb-3" style={{ width: "3rem", height: "3rem" }} role="status"></div>
+          <p className="fw-semibold text-success">{mailMessage}</p>
+        </div>
+      )}
+
+      {/* 🔔 Toast Notification */}
+      {toast.show && (
+        <div
+          className={`toast align-items-center text-white bg-${toast.type} position-fixed top-0 end-0 m-3 show`}
+          role="alert"
+          style={{ zIndex: 3000, minWidth: "250px" }}
+        >
+          <div className="d-flex">
+            <div className="toast-body fw-semibold">{toast.text}</div>
+            <button
+              type="button"
+              className="btn-close btn-close-white me-2 m-auto"
+              onClick={() => setToast({ show: false, type: "", text: "" })}
+            ></button>
           </div>
         </div>
       )}

@@ -151,7 +151,7 @@ app.post("/api/tickets", async (req, res) => {
         .split(",")[0]
         .trim();
 
-    // ✅ Handle multiple admins — insert one ticket for each selected admin
+    //  Handle multiple admins — insert one ticket for each selected admin
     const admins = Array.isArray(reporting_to) ? reporting_to : [reporting_to];
 
     for (const admin of admins) {
@@ -302,10 +302,9 @@ app.get("/api/admin/tickets/counts", auth, async (req, res) => {
     if (req.user.role !== "ADMIN")
       return res.status(403).json({ error: "Access denied" });
 
-    // Manager name query-ல இருந்தா அதைய use பண்ணு
+   
     const manager = req.query.manager || req.user.display_name;
 
-    // DB-ல அந்த managerக்கு எத்தனை status இருக்குன்னு count பண்ணுது
     const [rows] = await pool.query(
       `SELECT status, COUNT(*) AS count 
        FROM tickets 
@@ -314,7 +313,6 @@ app.get("/api/admin/tickets/counts", auth, async (req, res) => {
       [manager]
     );
 
-    // result → object format-ஆ convert பண்ணுது
     const counts = {};
     rows.forEach((r) => (counts[r.status] = r.count));
 
@@ -329,7 +327,7 @@ app.get("/api/admin/tickets/counts", auth, async (req, res) => {
 
 ////
 // ======================================================
-// 🔹 Admin list API (Frontend dropdown-க்கு)
+// Admin list API (Frontend dropdown)
 // ======================================================
 app.get("/api/admins", async (req, res) => {
   try {
@@ -430,6 +428,63 @@ app.patch("/api/admin/tickets/:id/assign", auth, async (req, res) => {
 });
 
 
+// ======================================================
+// 🔹 ADMIN — Reject Ticket (auto mail to employee, no reason required)
+// ======================================================
+app.patch("/api/admin/tickets/:id/reject", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "ADMIN")
+      return res.status(403).json({ error: "Access denied" });
+
+    const { id } = req.params;
+
+    // ✅ Ticket details
+    const t = await getTicketWithEmployeeEmail(id);
+    if (!t) return res.status(404).json({ error: "Ticket not found" });
+
+    // ✅ Update ticket status
+    await pool.query(
+      "UPDATE tickets SET status='REJECTED', fixed_note='Rejected by Admin' WHERE id=?",
+      [id]
+    );
+
+    // ✅ Get admin mail info
+    const [rows] = await pool.query(
+      "SELECT email, mail_pass FROM users WHERE username=? LIMIT 1",
+      [req.user.username]
+    );
+    const admin = rows[0];
+
+    // ✅ Send mail to user
+    if (admin?.email && admin?.mail_pass && t?.employee_email) {
+      await safeSendMail(
+        {
+          from: admin.email,
+          to: t.employee_email,
+          subject: "Your Ticket has been Rejected",
+          html: `
+            <p>Dear <strong>${t.full_name}</strong>,</p>
+            <p>Your submitted ticket has been 
+            <strong style="color:red;">REJECTED</strong> by 
+            <strong>${req.user.display_name}</strong>.</p>
+
+            <p><strong>Issue:</strong> ${t.issue_text}</p>
+            <p style="margin-top:10px;">— Rapid Ticketing System</p>
+          `,
+        },
+        admin.email,
+        admin.mail_pass
+      );
+
+      console.log(`📧 Rejection mail sent to ${t.employee_email}`);
+    }
+
+    res.json({ ok: true, message: "Ticket rejected and mail sent successfully" });
+  } catch (e) {
+    console.error("❌ Admin reject error:", e);
+    res.status(500).json({ error: "Reject failed" });
+  }
+});
 
 
 
@@ -533,7 +588,7 @@ app.patch("/api/technician/tickets/:id/status", auth, async (req, res) => {
 
 
 
-// 🔹 Technician Reject Ticket → sends email to Admin
+//  Technician Reject Ticket → sends email to Admin
 app.patch("/api/technician/tickets/:id/reject", auth, async (req, res) => {
   try {
     if (req.user.role !== "TECHNICIAN")
@@ -585,9 +640,6 @@ app.patch("/api/technician/tickets/:id/reject", auth, async (req, res) => {
     res.status(500).json({ error: "Reject process failed" });
   }
 });
-
-
-
 
 
 

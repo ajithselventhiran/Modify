@@ -140,25 +140,26 @@ export default function AdminDashboard() {
   };
 
   // 🔹 Reject Ticket
-  const handleReject = async (ticketId) => {
-    if (!window.confirm("Are you sure you want to reject this ticket?")) return;
-    try {
-      const res = await fetch(`${API}/api/admin/tickets/${ticketId}/reject`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        alert("❌ Ticket rejected successfully");
-        await loadTickets();
-        await loadCounts();
-      } else {
-        const data = await res.json();
-        alert(data?.error || "Reject failed");
-      }
-    } catch (err) {
-      console.error("❌ Reject error:", err);
+ const handleReject = async (ticketId) => {
+  if (!window.confirm("Are you sure you want to reject this ticket?")) return;
+  try {
+    const res = await fetch(`${API}/api/admin/tickets/${ticketId}/reject`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      alert("❌ Ticket rejected successfully");
+      await loadTickets();
+      await loadCounts();
+    } else {
+      const data = await res.json();
+      alert(data?.error || "Reject failed");
     }
-  };
+  } catch (err) {
+    console.error("❌ Reject error:", err);
+  }
+};
+
 
   const closeModal = () => {
     setShowModal(false);
