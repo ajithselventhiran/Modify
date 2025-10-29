@@ -8,28 +8,28 @@ export default function TechnicianDashboard() {
   const [filter, setFilter] = useState("ALL");
   const [loading, setLoading] = useState(false);
   const [techName, setTechName] = useState("");
+  const [allTickets, setAllTickets] = useState([]); // ✅ keep full ticket list
+
   const [counts, setCounts] = useState({
     ALL: 0,
     ASSIGNED: 0,
     NOT_STARTED: 0,
     INPROCESS: 0,
     COMPLETE: 0,
+    REJECTED: 0,
   });
 
-  //  New States for Modals
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showActionModal, setShowActionModal] = useState(false);
   const [currentTicket, setCurrentTicket] = useState(null);
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [note, setNote] = useState("");
 
-  //  Preloader States
   const [mailLoading, setMailLoading] = useState(false);
   const [mailMessage, setMailMessage] = useState("Processing...");
-
-  //  Toast Notification States
   const [toast, setToast] = useState({ show: false, type: "", text: "" });
 
   const showToast = (type, text) => {
@@ -37,38 +37,58 @@ export default function TechnicianDashboard() {
     setTimeout(() => setToast({ show: false, type: "", text: "" }), 3000);
   };
 
-  //  Load Technician Info from LocalStorage
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
     setTechName(userData?.display_name || userData?.username || "Technician");
   }, []);
 
-  //  Load Tickets Assigned to Technician
-  const loadTickets = async () => {
-    setLoading(true);
+  // ✅ Smart ticket loader with silent refresh support
+  const loadTickets = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const q = new URLSearchParams();
-      if (filter !== "ALL") q.set("status", filter);
-
-      const res = await fetch(`${API}/api/technician/my-tickets?${q.toString()}`, {
+      const res = await fetch(`${API}/api/technician/my-tickets`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to load tickets");
       const data = await res.json();
-      setTickets(Array.isArray(data) ? data : []);
-      calculateCounts(data);
+      const validData = Array.isArray(data) ? data : [];
+
+      // ✅ Compare old vs new to prevent flicker
+      setAllTickets((prev) => {
+        const prevKey = prev.map((t) => `${t.id}-${t.status}`).join(",");
+        const newKey = validData.map((t) => `${t.id}-${t.status}`).join(",");
+        if (prevKey === newKey) return prev; // same data — no update
+        calculateCounts(validData);
+        applyFilter(validData, filter);
+        return validData;
+      });
     } catch (err) {
       console.error("❌ Ticket load failed:", err);
+      setAllTickets([]);
       setTickets([]);
-      setCounts({ ALL: 0, ASSIGNED: 0, NOT_STARTED: 0, INPROCESS: 0, COMPLETE: 0 });
+      setCounts({
+        ALL: 0,
+        ASSIGNED: 0,
+        NOT_STARTED: 0,
+        INPROCESS: 0,
+        COMPLETE: 0,
+        REJECTED: 0,
+      });
       showToast("danger", "Failed to load tickets");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
-  //  Calculate Ticket Counts Locally
+  const applyFilter = (data, selectedFilter) => {
+    if (selectedFilter === "ALL") setTickets(data);
+    else
+      setTickets(
+        data.filter((t) => (t.status || "").toUpperCase() === selectedFilter)
+      );
+  };
+
   const calculateCounts = (data) => {
     const grouped = data.reduce(
       (acc, t) => {
@@ -77,16 +97,35 @@ export default function TechnicianDashboard() {
         if (acc[s] !== undefined) acc[s] += 1;
         return acc;
       },
-      { ALL: 0, ASSIGNED: 0, NOT_STARTED: 0, INPROCESS: 0, COMPLETE: 0 }
+      {
+        ALL: 0,
+        ASSIGNED: 0,
+        NOT_STARTED: 0,
+        INPROCESS: 0,
+        COMPLETE: 0,
+        REJECTED: 0,
+      }
     );
     setCounts(grouped);
   };
 
   useEffect(() => {
-    loadTickets();
-  }, [filter]);
+    applyFilter(allTickets, filter);
+  }, [filter, allTickets]);
 
-  //  Update Ticket Status
+  // ✅ Auto-refresh (every 5 sec, only when data changes)
+  useEffect(() => {
+    loadTickets(true);
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadTickets(true); // silent refresh
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const updateStatus = async (id, newStatus, fixed_note = "") => {
     const token = localStorage.getItem("token");
     try {
@@ -117,7 +156,6 @@ export default function TechnicianDashboard() {
     }
   };
 
-  //  Technician Reject Ticket
   const rejectTicket = async (id, subject, message) => {
     const token = localStorage.getItem("token");
     try {
@@ -146,7 +184,6 @@ export default function TechnicianDashboard() {
     }
   };
 
-  //  Status Badge Colors
   const getStatusBadge = (status) => {
     const map = {
       ASSIGNED: "bg-warning text-dark",
@@ -158,7 +195,14 @@ export default function TechnicianDashboard() {
     return map[status?.toUpperCase()] || "bg-secondary";
   };
 
-  const statusOrder = ["ALL", "ASSIGNED", "NOT_STARTED", "INPROCESS", "COMPLETE"];
+  const statusOrder = [
+    "ALL",
+    "ASSIGNED",
+    "NOT_STARTED",
+    "INPROCESS",
+    "COMPLETE",
+    "REJECTED",
+  ];
 
   return (
     <div
@@ -181,19 +225,23 @@ export default function TechnicianDashboard() {
         </div>
       </div>
 
-      {/* STATUS CARDS ROW */}
+      {/* STATUS CARDS */}
       <div className="d-flex flex-wrap justify-content-center gap-3 mb-3">
         {statusOrder.map((key) => (
           <div
             key={key}
-            className={`text-center text-white p-3 shadow-sm ${getStatusBadge(key)}`}
+            className={`text-center text-white p-3 shadow-sm ${getStatusBadge(
+              key
+            )}`}
             style={{
               borderRadius: "12px",
               width: "15%",
               minWidth: "120px",
               transition: "transform 0.3s",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.05)")}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.transform = "scale(1.05)")
+            }
             onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
           >
             <h6 className="fw-semibold text-uppercase small mb-1">
@@ -207,7 +255,11 @@ export default function TechnicianDashboard() {
       {/* FILTER BUTTONS */}
       <div className="d-flex flex-wrap justify-content-center gap-3 mb-5">
         {statusOrder.map((s) => (
-          <div key={s} className="text-center" style={{ width: "15%", minWidth: "120px" }}>
+          <div
+            key={s}
+            className="text-center"
+            style={{ width: "15%", minWidth: "120px" }}
+          >
             <button
               className={`btn btn-sm w-100 fw-semibold ${
                 filter === s ? "btn-success" : "btn-outline-success"
@@ -224,9 +276,7 @@ export default function TechnicianDashboard() {
       <div className="card border-0 shadow-lg rounded-4">
         <div
           className="card-header text-white rounded-top-4"
-          style={{
-            background: "linear-gradient(90deg, #198754, #20c997)",
-          }}
+          style={{ background: "linear-gradient(90deg, #198754, #20c997)" }}
         >
           <h5 className="mb-0 fw-semibold">My Assigned Tickets</h5>
         </div>
@@ -236,7 +286,7 @@ export default function TechnicianDashboard() {
             <table className="table table-hover align-middle mb-0">
               <thead className="table-success text-center">
                 <tr>
-                  <th>Assigned By (Manager)</th>
+                  <th>Assigned By</th>
                   <th>Start Date</th>
                   <th>End Date</th>
                   <th>Status</th>
@@ -263,34 +313,28 @@ export default function TechnicianDashboard() {
                     <tr key={t.id} className="text-center">
                       <td>{t.reporting_to || "—"}</td>
                       <td>
-                        <span className="badge bg-light text-dark border">
-                          {t.start_date && t.start_date !== "0000-00-00"
-                            ? new Date(t.start_date).toLocaleDateString("en-IN")
-                            : "—"}
-                        </span>
+                        {t.start_date
+                          ? new Date(t.start_date).toLocaleDateString("en-IN")
+                          : "—"}
+                      </td>
+                      <td>
+                        {t.end_date
+                          ? new Date(t.end_date).toLocaleDateString("en-IN")
+                          : "—"}
                       </td>
                       <td>
                         <span
-                          className={`badge ${
-                            t.end_date && new Date(t.end_date) < new Date()
-                              ? "bg-danger text-white"
-                              : "bg-light text-dark border"
-                          }`}
+                          className={`badge ${getStatusBadge(
+                            t.status
+                          )} px-3 py-2`}
                         >
-                          {t.end_date
-                            ? new Date(t.end_date).toLocaleDateString("en-IN")
-                            : "—"}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`badge ${getStatusBadge(t.status)} px-3 py-2`}>
                           {t.status}
                         </span>
                       </td>
                       <td>{t.remarks || "-"}</td>
                       <td>
                         <button
-                          className="btn btn-sm btn-outline-secondary"
+                          className="btn btn-sm btn-primary"
                           onClick={() => {
                             setCurrentTicket(t);
                             setShowDetailModal(true);
@@ -300,60 +344,15 @@ export default function TechnicianDashboard() {
                         </button>
                       </td>
                       <td>
-                        {t.status === "ASSIGNED" && (
-                          <>
-                            <button
-                              className="btn btn-sm btn-outline-info me-1"
-                              onClick={() => updateStatus(t.id, "NOT_STARTED")}
-                            >
-                              Not Started
-                            </button>
-                            <button
-                              className="btn btn-sm btn-outline-danger"
-                              onClick={() => {
-                                setCurrentTicket(t);
-                                setShowRejectModal(true);
-                              }}
-                            >
-                              Reject
-                            </button>
-                          </>
-                        )}
-                        {t.status === "NOT_STARTED" && (
-                          <>
-                            <button
-                              className="btn btn-sm btn-outline-primary me-1"
-                              onClick={() => updateStatus(t.id, "INPROCESS")}
-                            >
-                              In Process
-                            </button>
-                            <button
-                              className="btn btn-sm btn-outline-danger"
-                              onClick={() => {
-                                setCurrentTicket(t);
-                                setShowRejectModal(true);
-                              }}
-                            >
-                              Reject
-                            </button>
-                          </>
-                        )}
-                        {t.status === "INPROCESS" && (
-                          <button
-                            className="btn btn-sm btn-outline-success"
-                            onClick={() => {
-                              setCurrentTicket(t);
-                              setShowCompleteModal(true);
-                            }}
-                          >
-                            Complete
-                          </button>
-                        )}
-                        {t.status === "COMPLETE" && (
-                          <button className="btn btn-sm btn-success" disabled>
-                            Completed
-                          </button>
-                        )}
+                        <button
+                          className="btn btn-sm btn-outline-dark"
+                          onClick={() => {
+                            setCurrentTicket(t);
+                            setShowActionModal(true);
+                          }}
+                        >
+                          ⋯
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -364,30 +363,72 @@ export default function TechnicianDashboard() {
         </div>
       </div>
 
-      {/*  View Issue Modal */}
-      {showDetailModal && currentTicket && (
+      {/* ACTION MODAL */}
+      {showActionModal && currentTicket && (
         <div className="modal fade show d-block" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
-              <div className="modal-header bg-secondary text-white">
-                <h5 className="modal-title">Ticket Details</h5>
-                <button className="btn-close" onClick={() => setShowDetailModal(false)}></button>
+              <div className="modal-header bg-dark text-white">
+                <h5 className="modal-title">
+                  Actions — Ticket #{currentTicket.id}
+                </h5>
+                <button
+                  className="btn-close"
+                  onClick={() => setShowActionModal(false)}
+                ></button>
               </div>
-              <div className="modal-body">
-                <p><strong>Assigned By:</strong> {currentTicket.reporting_to}</p>
-                <p><strong>Issue:</strong> {currentTicket.issue_text}</p>
-                <p><strong>Start Date:</strong> {currentTicket.start_date ? new Date(currentTicket.start_date).toLocaleDateString("en-IN") : "—"}</p>
-                <p><strong>End Date:</strong> {currentTicket.end_date ? new Date(currentTicket.end_date).toLocaleDateString("en-IN") : "—"}</p>
-                <p><strong>Remarks:</strong> {currentTicket.remarks || "—"}</p>
-                <p>
-                  <strong>Status:</strong>{" "}
-                  <span className={`badge ${getStatusBadge(currentTicket.status)} px-3 py-2`}>
-                    {currentTicket.status}
-                  </span>
-                </p>
+              <div className="modal-body d-flex flex-wrap gap-2 justify-content-center">
+                <button
+                  className="btn btn-info"
+                  disabled={currentTicket.status !== "ASSIGNED"}
+                  onClick={() => {
+                    setShowActionModal(false);
+                    updateStatus(currentTicket.id, "NOT_STARTED");
+                  }}
+                >
+                  Not Started
+                </button>
+
+                <button
+                  className="btn btn-primary"
+                  disabled={currentTicket.status !== "NOT_STARTED"}
+                  onClick={() => {
+                    setShowActionModal(false);
+                    updateStatus(currentTicket.id, "INPROCESS");
+                  }}
+                >
+                  In Process
+                </button>
+
+                <button
+                  className="btn btn-success"
+                  disabled={currentTicket.status !== "INPROCESS"}
+                  onClick={() => {
+                    setShowActionModal(false);
+                    setShowCompleteModal(true);
+                  }}
+                >
+                  Complete
+                </button>
+
+                <button
+                  className="btn btn-danger"
+                  disabled={["COMPLETE", "REJECTED"].includes(
+                    currentTicket.status
+                  )}
+                  onClick={() => {
+                    setShowActionModal(false);
+                    setShowRejectModal(true);
+                  }}
+                >
+                  Reject
+                </button>
               </div>
               <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setShowDetailModal(false)}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowActionModal(false)}
+                >
                   Close
                 </button>
               </div>
@@ -396,14 +437,52 @@ export default function TechnicianDashboard() {
         </div>
       )}
 
-      {/*  Complete Modal */}
+      {/* VIEW / COMPLETE / REJECT MODALS (same as before) */}
+      {showDetailModal && currentTicket && (
+        <div className="modal fade show d-block" tabIndex="-1">
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header bg-secondary text-white">
+                <h5 className="modal-title">Ticket Details</h5>
+                <button
+                  className="btn-close"
+                  onClick={() => setShowDetailModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>
+                  <strong>Assigned By:</strong> {currentTicket.reporting_to}
+                </p>
+                <p>
+                  <strong>Issue:</strong> {currentTicket.issue_text}
+                </p>
+                <p>
+                  <strong>Status:</strong> {currentTicket.status}
+                </p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowDetailModal(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCompleteModal && (
         <div className="modal fade show d-block" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header bg-success text-white">
                 <h5 className="modal-title">Add Completion Note</h5>
-                <button className="btn-close" onClick={() => setShowCompleteModal(false)}></button>
+                <button
+                  className="btn-close"
+                  onClick={() => setShowCompleteModal(false)}
+                ></button>
               </div>
               <div className="modal-body">
                 <textarea
@@ -415,7 +494,10 @@ export default function TechnicianDashboard() {
                 ></textarea>
               </div>
               <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setShowCompleteModal(false)}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowCompleteModal(false)}
+                >
                   Cancel
                 </button>
                 <button
@@ -434,14 +516,16 @@ export default function TechnicianDashboard() {
         </div>
       )}
 
-      {/*  Reject Modal */}
       {showRejectModal && (
         <div className="modal fade show d-block" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header bg-danger text-white">
                 <h5 className="modal-title">Reject Ticket</h5>
-                <button className="btn-close" onClick={() => setShowRejectModal(false)}></button>
+                <button
+                  className="btn-close"
+                  onClick={() => setShowRejectModal(false)}
+                ></button>
               </div>
               <div className="modal-body">
                 <input
@@ -460,7 +544,10 @@ export default function TechnicianDashboard() {
                 ></textarea>
               </div>
               <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setShowRejectModal(false)}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowRejectModal(false)}
+                >
                   Cancel
                 </button>
                 <button
@@ -480,18 +567,21 @@ export default function TechnicianDashboard() {
         </div>
       )}
 
-      {/*  Spinner Overlay */}
+      {/* LOADER + TOAST */}
       {mailLoading && (
         <div
           className="position-fixed top-0 start-0 w-100 h-100 d-flex flex-column justify-content-center align-items-center"
           style={{ background: "rgba(255,255,255,0.8)", zIndex: 2000 }}
         >
-          <div className="spinner-border text-success mb-3" style={{ width: "3rem", height: "3rem" }} role="status"></div>
+          <div
+            className="spinner-border text-success mb-3"
+            style={{ width: "3rem", height: "3rem" }}
+            role="status"
+          ></div>
           <p className="fw-semibold text-success">{mailMessage}</p>
         </div>
       )}
 
-      {/*  Toast Notification */}
       {toast.show && (
         <div
           className={`toast align-items-center text-white bg-${toast.type} position-fixed top-0 end-0 m-3 show`}

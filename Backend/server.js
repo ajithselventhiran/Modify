@@ -366,7 +366,9 @@ app.get("/api/admin/technicians", auth, async (req, res) => {
 
 
 
-//  Admin Assign Ticket → send email to technician (NodeMailer)
+// ======================================================
+//  Admin Assign Ticket → send email to Technician + User (Simple user mail)
+// ======================================================
 app.patch("/api/admin/tickets/:id/assign", auth, async (req, res) => {
   try {
     if (req.user.role !== "ADMIN")
@@ -378,15 +380,22 @@ app.patch("/api/admin/tickets/:id/assign", auth, async (req, res) => {
     if (!assigned_to)
       return res.status(400).json({ error: "assigned_to required" });
 
-    // Update ticket
+    // ✅ Update ticket details in DB
     await pool.query(
       `UPDATE tickets 
        SET assigned_to=?, start_date=?, end_date=?, priority=?, remarks=?, status='ASSIGNED'
        WHERE id=?`,
-      [assigned_to, start_date || null, end_date || null, priority || null, remarks || null, id]
+      [
+        assigned_to,
+        start_date || null,
+        end_date || null,
+        priority || null,
+        remarks || null,
+        id,
+      ]
     );
 
-    // Get technician and admin details
+    // ✅ Fetch Technician, Admin, and Ticket Info
     const [techRows] = await pool.query(
       "SELECT email FROM users WHERE full_name=? OR username=? LIMIT 1",
       [assigned_to, assigned_to]
@@ -399,6 +408,9 @@ app.patch("/api/admin/tickets/:id/assign", auth, async (req, res) => {
     const admin = adminRows[0];
     const t = await getTicketWithEmployeeEmail(id);
 
+    // ===================== EMAIL SECTION =====================
+
+    // 1️⃣ Technician Mail (full info)
     if (tech?.email && admin?.email && admin?.mail_pass) {
       await safeSendMail(
         {
@@ -408,24 +420,57 @@ app.patch("/api/admin/tickets/:id/assign", auth, async (req, res) => {
           html: `
             <p>Dear ${assigned_to},</p>
             <p>A new issue has been assigned by <strong>${req.user.display_name}</strong>.</p>
-            <p><strong>User:</strong> ${t.full_name}<br/>
-            <strong>Issue:</strong> ${t.issue_text}<br/>
-            <strong>Start:</strong> ${start_date || "-"} <br/>
-            <strong>End:</strong> ${end_date || "-"}</p>
+            <p>
+              <strong>User:</strong> ${t.full_name}<br/>
+              <strong>Issue:</strong> ${t.issue_text}<br/>
+              <strong>Start:</strong> ${start_date || "-"} <br/>
+              <strong>End:</strong> ${end_date || "-"}
+            </p>
             <p>— Rapid Ticketing System</p>
           `,
         },
         admin.email,
         admin.mail_pass
       );
+
+      console.log(`📧 Technician mail sent to: ${tech.email}`);
     }
 
-    res.json({ ok: true, message: "Ticket assigned and mail sent successfully" });
+    // 2️⃣ User Mail (simple confirmation — no dates, no priority)
+    if (t?.employee_email && admin?.email && admin?.mail_pass) {
+      await safeSendMail(
+        {
+          from: admin.email,
+          to: t.employee_email,
+          subject: "Your Ticket Has Been Assigned",
+          html: `
+            <p>Dear <strong>${t.full_name}</strong>,</p>
+            <p>Your issue has been assigned to a technician by 
+            <strong>${req.user.display_name}</strong>.</p>
+            <p><strong>Issue:</strong> ${t.issue_text}</p>
+            <p>Our team will begin working on it shortly.</p>
+            <p>— Rapid Ticketing System</p>
+          `,
+        },
+        admin.email,
+        admin.mail_pass
+      );
+
+      console.log(`📧 User mail sent to: ${t.employee_email}`);
+    }
+
+    // ==========================================================
+
+    res.json({
+      ok: true,
+      message: "Ticket assigned and mails sent successfully",
+    });
   } catch (e) {
     console.error("❌ Admin assign error:", e);
     res.status(500).json({ error: "Assign failed" });
   }
 });
+
 
 
 // ======================================================
