@@ -370,7 +370,7 @@ export default function TechnicianDashboard() {
             <div className="modal-content">
               <div className="modal-header bg-dark text-white">
                 <h5 className="modal-title">
-                  Actions — Ticket #{currentTicket.id}
+                  Actions — Ticket {currentTicket.id}
                 </h5>
                 <button
                   className="btn-close"
@@ -378,51 +378,89 @@ export default function TechnicianDashboard() {
                 ></button>
               </div>
               <div className="modal-body d-flex flex-wrap gap-2 justify-content-center">
-                <button
-                  className="btn btn-info"
-                  disabled={currentTicket.status !== "ASSIGNED"}
-                  onClick={() => {
-                    setShowActionModal(false);
-                    updateStatus(currentTicket.id, "NOT_STARTED");
-                  }}
-                >
-                  Not Started
-                </button>
+                {/* 🔹 Not Started */}
+                {currentTicket.status === "ASSIGNED" ? (
+                  <button
+                    className="btn btn-info"
+                    onClick={() => {
+                      setShowActionModal(false);
+                      updateStatus(currentTicket.id, "NOT_STARTED");
+                    }}
+                  >
+                    Not Started
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-outline-info"
+                    disabled
+                  >
+                    Not Started
+                  </button>
+                )}
 
-                <button
-                  className="btn btn-primary"
-                  disabled={currentTicket.status !== "NOT_STARTED"}
-                  onClick={() => {
-                    setShowActionModal(false);
-                    updateStatus(currentTicket.id, "INPROCESS");
-                  }}
-                >
-                  In Process
-                </button>
+                {/* 🔹 In Process */}
+                {currentTicket.status === "NOT_STARTED" ? (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setShowActionModal(false);
+                      updateStatus(currentTicket.id, "INPROCESS");
+                    }}
+                  >
+                    In Process
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary"
+                    disabled
+                  >
+                    In Process
+                  </button>
+                )}
 
-                <button
-                  className="btn btn-success"
-                  disabled={currentTicket.status !== "INPROCESS"}
-                  onClick={() => {
-                    setShowActionModal(false);
-                    setShowCompleteModal(true);
-                  }}
-                >
-                  Complete
-                </button>
+                {/* 🔹 Complete */}
+                {currentTicket.status === "INPROCESS" ? (
+                  <button
+                    className="btn btn-success"
+                    onClick={() => {
+                      setShowActionModal(false);
+                      setShowCompleteModal(true);
+                    }}
+                  >
+                    Complete
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-outline-success"
+                    disabled
+                  >
+                    Complete
+                  </button>
+                )}
 
-                <button
-                  className="btn btn-danger"
-                  disabled={["COMPLETE", "REJECTED"].includes(
-                    currentTicket.status
-                  )}
-                  onClick={() => {
-                    setShowActionModal(false);
-                    setShowRejectModal(true);
-                  }}
-                >
-                  Reject
-                </button>
+                {/* 🔹 Reject */}
+                {!["COMPLETE", "REJECTED"].includes(currentTicket.status) ? (
+                  <button
+                    className="btn btn-danger"
+                    onClick={() => {
+                      setShowActionModal(false);
+                      setShowRejectModal(true);
+                    }}
+                  >
+                    Reject
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-outline-danger"
+                    disabled
+                  >
+                    Reject
+                  </button>
+                )}
               </div>
               <div className="modal-footer">
                 <button

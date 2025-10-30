@@ -204,6 +204,32 @@ app.get("/api/employees/find", async (req, res) => {
 });
 
 
+// ======================================================
+// User — Get Completed Tickets by Emp ID
+// ======================================================
+app.get("/api/tickets/completed", async (req, res) => {
+  try {
+    const { emp_id } = req.query;
+    if (!emp_id) return res.status(400).json({ message: "emp_id required" });
+
+    // Fetch completed tickets only
+    const [rows] = await pool.query(
+      `SELECT id, issue_text, reporting_to, created_at, updated_at, status 
+       FROM tickets 
+       WHERE emp_id = ? AND status = 'COMPLETE'
+       ORDER BY updated_at DESC`,
+      [emp_id]
+    );
+
+    res.json(rows);
+  } catch (e) {
+    console.error("❌ /api/tickets/completed error:", e);
+    res.status(500).json({ message: "Failed to load completed tickets" });
+  }
+});
+
+
+
 
 
 

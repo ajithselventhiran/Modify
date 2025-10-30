@@ -19,6 +19,8 @@ export default function TicketForm() {
   const [progress, setProgress] = useState(0);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [reportingList, setReportingList] = useState([]);
+  const [completedTickets, setCompletedTickets] = useState([]);
+
 
   //  Get Public IP
   useEffect(() => {
@@ -438,6 +440,90 @@ export default function TicketForm() {
           <ToastContainer />
         </div>
       </div>
+
+
+
+      {/* ===================================================== */}
+{/* Know Your Ticket Status Section */}
+{/* ===================================================== */}
+<div className="mt-5 pt-4 border-top">
+  <h5 className="text-center text-primary mb-3">Know Your Ticket Status</h5>
+
+  <div className="d-flex justify-content-center align-items-center gap-2 mb-3">
+    <input
+      type="text"
+      className="form-control"
+      placeholder="Enter your Employee ID"
+      style={{ width: "250px" }}
+      id="statusEmpId"
+    />
+    <button
+      className="btn btn-success"
+      onClick={async () => {
+        const empInput = document.getElementById("statusEmpId").value.trim();
+        if (!empInput) return toast.warning("Please enter Employee ID.");
+
+        // ✅ Ensure only logged-in employee can view their own data
+        if (!emp || empInput !== emp.emp_id.toString()) {
+          return toast.error("⚠️ You can only view your own ticket status!");
+        }
+
+        try {
+          const { data } = await axios.get(`${API}/api/tickets/completed`, {
+            params: { emp_id: empInput },
+          });
+
+          if (!data.length) {
+            toast.info("No completed tickets found yet.");
+            setCompletedTickets([]);
+          } else {
+            setCompletedTickets(data);
+          }
+        } catch (err) {
+          toast.error("❌ Failed to fetch ticket status");
+        }
+      }}
+    >
+      Submit
+    </button>
+  </div>
+
+  {/* Tickets Table */}
+  {completedTickets && completedTickets.length > 0 && (
+    <div className="table-responsive">
+      <table className="table table-bordered table-sm table-striped text-center align-middle">
+        <thead className="table-light">
+          <tr>
+            <th>ID</th>
+            <th>Issue</th>
+            <th>Admin</th>
+            <th>Created</th>
+            <th>Updated</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {completedTickets.map((t, i) => (
+            <tr key={i}>
+              <td>{t.id}</td>
+              <td>{t.issue_text}</td>
+              <td>{t.reporting_to}</td>
+              <td>{new Date(t.created_at).toLocaleDateString()}</td>
+              <td>{new Date(t.updated_at).toLocaleDateString()}</td>
+              <td>
+                <span className="badge bg-success">{t.status}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</div>
+
     </>
   );
 }
+
+
+
