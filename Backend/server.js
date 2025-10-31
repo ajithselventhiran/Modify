@@ -320,6 +320,125 @@ app.get("/api/admin/tickets", auth, async (req, res) => {
   }
 });
 
+
+// ======================================================
+// 🔔 ADMIN — Notifications: overdue tickets
+// ======================================================
+app.get("/api/admin/notifications", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "ADMIN")
+      return res.status(403).json({ error: "Access denied" });
+    const manager = req.user.display_name;
+    const today = new Date().toISOString().split("T")[0];
+    const [rows] = await pool.query(
+      `SELECT id, emp_id, full_name, end_date, status
+       FROM tickets
+       WHERE reporting_to=? 
+         AND end_date IS NOT NULL 
+         AND end_date < ?
+         AND status NOT IN ('COMPLETE','REJECTED')
+       ORDER BY end_date ASC`,
+      [manager, today]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Notifications error:", err);
+    res.status(500).json({ error: "Failed to load notifications" });
+  }
+});
+
+
+// ======================================================
+//  ADMIN — Send Reminder Mail to Technician (Overdue Tickets)
+// ======================================================
+app.post("/api/admin/tickets/:id/remind", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "ADMIN")
+      return res.status(403).json({ error: "Access denied" });
+
+    const { id } = req.params;
+    const { message } = req.body;
+
+    if (!message || message.trim() === "")
+      return res.status(400).json({ error: "Reminder message required" });
+
+    // ✅ Fetch Ticket
+    const [ticketRows] = await pool.query(
+      "SELECT * FROM tickets WHERE id=? LIMIT 1",
+      [id]
+    );
+    if (!ticketRows.length)
+      return res.status(404).json({ error: "Ticket not found" });
+
+    const t = ticketRows[0];
+
+    if (!t.assigned_to)
+      return res
+        .status(400)
+        .json({ error: "This ticket has no assigned technician." });
+
+    // ✅ Get technician & admin mail details
+    const [techRows] = await pool.query(
+      "SELECT email FROM users WHERE full_name=? OR username=? LIMIT 1",
+      [t.assigned_to, t.assigned_to]
+    );
+    const [adminRows] = await pool.query(
+      "SELECT email, mail_pass FROM users WHERE username=? LIMIT 1",
+      [req.user.username]
+    );
+
+    const tech = techRows[0];
+    const admin = adminRows[0];
+
+    if (!tech?.email)
+      return res
+        .status(400)
+        .json({ error: "Technician email not found in database" });
+    if (!admin?.email || !admin?.mail_pass)
+      return res
+        .status(400)
+        .json({ error: "Admin mail credentials missing" });
+
+    // ✅ Send reminder mail
+    await safeSendMail(
+      {
+        from: admin.email,
+        to: tech.email,
+        subject: `⏰ Reminder: Ticket #${t.id} Overdue`,
+        html: `
+          <p>Dear ${t.assigned_to},</p>
+          <p>This is a gentle reminder from <strong>${req.user.display_name}</strong> 
+          regarding the overdue ticket:</p>
+          <p>
+            <strong>Ticket ID:</strong> ${t.id}<br/>
+            <strong>User:</strong> ${t.full_name}<br/>
+            <strong>Issue:</strong> ${t.issue_text}<br/>
+            <strong>End Date:</strong> ${t.end_date || "-"}
+          </p>
+          <hr/>
+          <p><strong>Admin Message:</strong></p>
+          <p style="font-style: italic; color:#333;">${message}</p>
+          <p>— Rapid Ticketing System</p>
+        `,
+      },
+      admin.email,
+      admin.mail_pass
+    );
+
+    console.log(`📧 Reminder mail sent to ${tech.email}`);
+
+    res.json({
+      ok: true,
+      message: `Reminder mail sent to ${t.assigned_to}`,
+    });
+  } catch (e) {
+    console.error("❌ Reminder mail error:", e);
+    res.status(500).json({ error: "Failed to send reminder mail" });
+  }
+});
+
+
+
 // ======================================================
 // 🔹 ADMIN — Ticket Counts by Status (Dashboard cards)
 // ======================================================
@@ -366,6 +485,8 @@ app.get("/api/admins", async (req, res) => {
     res.status(500).json({ message: "Server error fetching admin list" });
   }
 });
+
+
 
 
 

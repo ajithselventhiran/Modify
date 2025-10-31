@@ -1,0 +1,30 @@
+@keyframes ring {
+  0% { transform: rotate(0); }
+  10% { transform: rotate(15deg); }
+  20% { transform: rotate(-15deg); }
+  30% { transform: rotate(10deg); }
+  40% { transform: rotate(-10deg); }
+  50% { transform: rotate(5deg); }
+  60% { transform: rotate(-5deg); }
+  70%, 100% { transform: rotate(0); }
+}
+
+.animate-bell {
+  display: inline-block;
+  animation: ring 1s ease-in-out infinite;
+  transform-origin: top center;
+}
+
+/* 🔥 Highlight animation for clicked ticket */
+@keyframes flashRow {
+  0% { background-color: #fff3cd; transform: scale(1); }
+  50% { background-color: #ffe69c; transform: scale(1.03); }
+  100% { background-color: #fff3cd; transform: scale(1); }
+}
+
+.highlight-ticket {
+  animation: flashRow 2s ease-in-out 3;  /* glow + zoom effect */
+  box-shadow: 0 0 10px rgba(255, 193, 7, 0.7);
+  transition: all 0.3s ease;
+  border-left: 4px solid #ffc107;
+}

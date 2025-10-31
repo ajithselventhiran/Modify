@@ -1,11 +1,24 @@
 import { useEffect, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
+import "bootstrap-icons/font/bootstrap-icons.css"; // ✅ for bell icon
+import "../Style/animations.css";
+
+
 
 const API = "http://localhost:5000"; // 🔗 Backend API
 
 export default function AdminDashboard() {
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const managerName = user.display_name || "Admin";
+  // 🔔 Notifications
+const [notifications, setNotifications] = useState([]);
+const [showNotifications, setShowNotifications] = useState(false);
+
+
+const [showReminderModal, setShowReminderModal] = useState(false);
+const [reminderMessage, setReminderMessage] = useState("");
+const [reminderTicket, setReminderTicket] = useState(null);
+
 
   const [tickets, setTickets] = useState([]);
   const [technicianList, setTechnicianList] = useState([]);
@@ -77,6 +90,53 @@ const playSuccessSound = () => {
     }
     setTimeout(() => setToast({ show: false, type: "", text: "" }), 3000);
   };
+
+
+  // ✅ Load Notifications (Overdue tickets)
+const loadNotifications = async () => {
+  try {
+    const res = await fetch(`${API}/api/admin/notifications`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    setNotifications(Array.isArray(data) ? data : []);
+  } catch (err) {
+    console.error("❌ Notification load failed:", err);
+  }
+};
+
+
+// ✅ Scroll to ticket when clicked in notification
+const handleNotificationClick = (ticketId) => {
+  // Close notification popup
+  setShowNotifications(false);
+
+  // Small delay to ensure close animation done
+  setTimeout(() => {
+    // Remove any previous highlights
+    document.querySelectorAll(".highlight-ticket").forEach((r) =>
+      r.classList.remove("highlight-ticket")
+    );
+
+    // Find the target ticket row
+    const row = document.getElementById(`ticket-row-${ticketId}`);
+    if (row) {
+      // Smooth scroll to that ticket
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      // Add highlight + animation class
+      row.classList.add("highlight-ticket");
+
+      // Auto remove highlight after few seconds
+      setTimeout(() => {
+        row.classList.remove("highlight-ticket");
+      }, 4000);
+    }
+  }, 300);
+};
+
+
+
 
   // ✅ Smart auto-refresh loader
   const loadTickets = async (silent = false) => {
@@ -248,18 +308,21 @@ const playSuccessSound = () => {
   };
 
   // Auto Refresh
-  useEffect(() => {
-    loadTickets(true);
-    loadCounts();
+ useEffect(() => {
+  loadTickets(true);
+  loadCounts();
+  loadNotifications();
 
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        loadTickets(true);
-        loadCounts();
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [filter]);
+  const interval = setInterval(() => {
+    if (document.visibilityState === "visible") {
+      loadTickets(true);
+      loadCounts();
+      loadNotifications();
+    }
+  }, 5000);
+  return () => clearInterval(interval);
+}, [filter]);
+
 
   useEffect(() => {
     loadTechnicians();
@@ -292,9 +355,72 @@ const playSuccessSound = () => {
         }}
       >
         <div className="d-flex justify-content-between align-items-center flex-wrap">
-          <h3 className="fw-bold mb-0">Admin Dashboard — {managerName}</h3>
-          <small>{new Date().toLocaleString("en-IN")}</small>
-        </div>
+  <h3 className="fw-bold mb-0">Admin Dashboard — {managerName}</h3>
+
+  <div className="d-flex align-items-center gap-3">
+    <small>{new Date().toLocaleString("en-IN")}</small>
+
+    {/* 🔔 Notification Bell */}
+    <div className="position-relative">
+      <i
+        className={`bi bi-bell-fill fs-4 ${
+          notifications.length > 0 ? "text-warning animate-bell" : "text-light"
+        }`}
+        style={{ cursor: "pointer" }}
+        onClick={() => setShowNotifications(!showNotifications)}
+      ></i>
+
+      {notifications.length > 0 && (
+        <span
+          className="position-absolute top-0 start-0 translate-middle badge rounded-pill bg-danger"
+          style={{ fontSize: "0.7rem" }}
+        >
+          {notifications.length}
+        </span>
+      )}
+    </div>
+  </div>
+</div>
+
+{/* Notification Dropdown */}
+{showNotifications && (
+  <div
+    className="position-absolute end-0 mt-3 me-3 bg-white shadow-lg rounded-3 p-3"
+    style={{ width: "320px", zIndex: 2000 }}
+  >
+    <h6 className="fw-semibold mb-2 text-primary">
+      Overdue Tickets ({notifications.length})
+    </h6>
+    <div style={{ maxHeight: "250px", overflowY: "auto" }}>
+      {notifications.length === 0 ? (
+        <p className="text-muted small text-center mb-0">
+          No overdue tickets 🎉
+        </p>
+      ) : (
+      notifications.map((n) => (
+  <div
+    key={n.id}
+    className="border-bottom py-2 small"
+    style={{ cursor: "pointer" }}
+    onClick={() => handleNotificationClick(n.id)}
+  >
+    <strong>{n.full_name}</strong> — #{n.id}
+    <br />
+    <span className="text-danger fw-semibold">
+      End: {new Date(n.end_date).toLocaleDateString()}
+    </span>
+    <br />
+    <span className="text-muted">
+      {n.status} {n.assigned_to ? `— ${n.assigned_to}` : ""}
+    </span>
+  </div>
+))
+
+      )}
+    </div>
+  </div>
+)}
+
       </div>
 
       {/* STATUS CARDS */}
@@ -374,7 +500,7 @@ const playSuccessSound = () => {
                   </tr>
                 ) : (
                   tickets.map((t) => (
-                    <tr key={t.id} className="text-center">
+<tr id={`ticket-row-${t.id}`} key={t.id} className="text-center">
                       <td>{t.emp_id || "-"}</td>
                       <td>
                         <strong>{t.full_name}</strong>
@@ -404,28 +530,45 @@ const playSuccessSound = () => {
                           View
                         </button>
                       </td>
-                      <td>
-                        <div className="d-flex justify-content-center gap-2 flex-wrap">
-                          <button
-                            className="btn btn-sm btn-warning"
-                            disabled={t.status !== "NOT_ASSIGNED"}
-                            onClick={() => {
-                              setSelectedTicket(t);
-                              setShowModal(true);
-                            }}
-                          >
-                            Assign
-                          </button>
-                          <button
-  className="btn btn-sm btn-danger"
-  disabled={t.status !== "NOT_ASSIGNED"}
-  onClick={() => handleReject(t.id)}
->
-  Reject
-</button>
+<td>
+  <div className="d-flex justify-content-center gap-2 flex-wrap">
+    {/* 🔹 Show Remind only if overdue, not complete/rejected */}
+    {t.end_date &&
+    new Date(t.end_date) < new Date() &&
+    t.status !== "COMPLETE" &&
+    t.status !== "REJECTED" ? (
+      <button
+        className="btn btn-sm btn-info text-white"
+        onClick={() => {
+          setReminderTicket(t);
+          setShowReminderModal(true);
+        }}
+      >
+        Remind
+      </button>
+    ) : (
+      <>
+        {/* 🔸 Assign button */}
+        <button
+          className="btn btn-sm btn-warning"
+          disabled={t.status !== "NOT_ASSIGNED"}
+          onClick={() => {
+            setSelectedTicket(t);
+            setShowModal(true);
+          }}
+        >
+          Assign
+        </button>
 
-                        </div>
-                      </td>
+      
+      </>
+    )}
+  </div>
+</td>
+
+
+
+
                     </tr>
                   ))
                 )}
@@ -435,59 +578,73 @@ const playSuccessSound = () => {
         </div>
       </div>
 
-      {/* ISSUE MODAL */}
-      {showIssueModal && selectedTicket && (
-        <div
-          className="modal fade show d-block"
-          style={{ background: "rgba(0,0,0,0.5)" }}
-        >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg rounded-4">
-              <div className="modal-header bg-info text-white rounded-top-4">
-                <h5 className="modal-title">
-                  Issue Details — {selectedTicket.emp_id}
-                </h5>
-                <button
-                  className="btn-close"
-                  onClick={() => setShowIssueModal(false)}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <p>
-                  <strong>Employee:</strong> {selectedTicket.full_name}
-                </p>
-                <p>
-                  <strong>Department:</strong> {selectedTicket.department}
-                </p>
-                <p>
-                  <strong>IP Address:</strong> {selectedTicket.system_ip}
-                </p>
-                <hr />
-                <p>
-                  <strong>Issue:</strong>
-                  <br />
-                  {selectedTicket.issue_text}
-                </p>
-                <hr />
-                <p>
-                  <strong>Submitted On:</strong>{" "}
-                  {selectedTicket.created_at
-                    ? new Date(selectedTicket.created_at).toLocaleString()
-                    : "Not Available"}
-                </p>
-              </div>
-              <div className="modal-footer">
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setShowIssueModal(false)}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
+{/* ISSUE MODAL */}
+{showIssueModal && selectedTicket && (
+  <div
+    className="modal fade show d-block"
+    style={{ background: "rgba(0,0,0,0.5)" }}
+  >
+    <div className="modal-dialog modal-dialog-centered">
+      <div className="modal-content border-0 shadow-lg rounded-4">
+        <div className="modal-header bg-info text-white rounded-top-4">
+          <h5 className="modal-title">
+            Issue Details — {selectedTicket.emp_id}
+          </h5>
+          <button
+            className="btn-close"
+            onClick={() => setShowIssueModal(false)}
+          ></button>
         </div>
-      )}
+
+        <div className="modal-body">
+          <p>
+            <strong>Employee:</strong> {selectedTicket.full_name}
+          </p>
+          <p>
+            <strong>Department:</strong> {selectedTicket.department}
+          </p>
+          <p>
+            <strong>IP Address:</strong> {selectedTicket.system_ip}
+          </p>
+          <hr />
+          <p>
+            <strong>Issue:</strong>
+            <br />
+            {selectedTicket.issue_text}
+          </p>
+          <hr />
+          <p>
+            <strong>Submitted On:</strong>{" "}
+            {selectedTicket.created_at
+              ? new Date(selectedTicket.created_at).toLocaleString()
+              : "Not Available"}
+          </p>
+        </div>
+
+        {/* ✅ Footer with Reject + Close buttons */}
+        <div className="modal-footer d-flex justify-content-between">
+          <button
+            className="btn btn-danger"
+            disabled={["REJECTED", "ASSIGNED", "COMPLETE"].includes(
+              selectedTicket.status
+            )}
+            onClick={() => handleReject(selectedTicket.id)}
+          >
+            Reject
+          </button>
+
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowIssueModal(false)}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
 
       {/* ASSIGN MODAL */}
       {showModal && selectedTicket && (
@@ -584,6 +741,93 @@ const playSuccessSound = () => {
         </div>
       )}
 
+
+      {/* REMINDER MODAL */}
+{showReminderModal && reminderTicket && (
+  <div
+    className="modal fade show d-block"
+    style={{ background: "rgba(0,0,0,0.5)" }}
+  >
+    <div className="modal-dialog modal-dialog-centered">
+      <div className="modal-content border-0 shadow-lg rounded-4">
+        <div className="modal-header bg-info text-white rounded-top-4">
+          <h5 className="modal-title">
+            Reminder — {reminderTicket.assigned_to || "Technician"}
+          </h5>
+          <button
+            className="btn-close"
+            onClick={() => {
+              setShowReminderModal(false);
+              setReminderMessage("");
+            }}
+          ></button>
+        </div>
+        <div className="modal-body">
+          <p className="text-muted small mb-2">
+            Ticket ID: <strong>#{reminderTicket.id}</strong>
+          </p>
+          <textarea
+            rows="3"
+            className="form-control"
+            placeholder="Enter your reminder message to technician..."
+            value={reminderMessage}
+            onChange={(e) => setReminderMessage(e.target.value)}
+          ></textarea>
+        </div>
+        <div className="modal-footer">
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowReminderModal(false)}
+          >
+            Cancel
+          </button>
+          <button
+            className="btn btn-info text-white"
+            onClick={async () => {
+              if (!reminderMessage.trim())
+                return showToast("danger", "Please enter a message!");
+              try {
+                setMailLoading(true);
+                setMailMessage("Sending reminder to technician...");
+                const res = await fetch(
+                  `${API}/api/admin/tickets/${reminderTicket.id}/remind`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ message: reminderMessage }),
+                  }
+                );
+                const data = await res.json();
+                if (res.ok) {
+                  showToast(
+                    "success",
+                    `✅ Reminder sent to ${reminderTicket.assigned_to}`
+                  );
+                } else {
+                  showToast("danger", data?.error || "Failed to send reminder");
+                }
+              } catch (err) {
+                console.error("❌ Reminder error:", err);
+                showToast("danger", "Server error while sending reminder");
+              } finally {
+                setMailLoading(false);
+                setShowReminderModal(false);
+                setReminderMessage("");
+              }
+            }}
+          >
+            Send Reminder
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+
       {/* 📩 Preloader Spinner Overlay */}
       {mailLoading && (
         <div
@@ -629,6 +873,9 @@ const playSuccessSound = () => {
           </div>
         </div>
       )}
+      
     </div>
   );
 }
+
+
