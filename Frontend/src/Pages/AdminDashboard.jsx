@@ -44,6 +44,10 @@ const [reminderTicket, setReminderTicket] = useState(null);
   const [priority, setPriority] = useState("");
   const [remarks, setRemarks] = useState("");
 
+  // ✅ Pagination States
+const [currentPage, setCurrentPage] = useState(1); // 👉 current page number
+const ticketsPerPage = 10; // 👉 show 10 tickets per page
+
   // Mail / process loading
   const [mailLoading, setMailLoading] = useState(false);
   const [mailMessage, setMailMessage] = useState("Processing...");
@@ -135,6 +139,16 @@ const handleNotificationClick = (ticketId) => {
   }, 300);
 };
 
+
+
+// ✅ Pagination Logic
+const indexOfLastTicket = currentPage * ticketsPerPage; // 👉 last ticket index of current page
+const indexOfFirstTicket = indexOfLastTicket - ticketsPerPage; // 👉 first ticket index of current page
+const currentTickets = tickets.slice(indexOfFirstTicket, indexOfLastTicket); // 👉 tickets to display
+const totalPages = Math.ceil(tickets.length / ticketsPerPage); // 👉 total number of pages
+
+// ✅ Function to change page when button clicked
+const paginate = (pageNumber) => setCurrentPage(pageNumber);
 
 
 
@@ -499,7 +513,7 @@ const handleNotificationClick = (ticketId) => {
                     </td>
                   </tr>
                 ) : (
-                  tickets.map((t) => (
+                 currentTickets.map((t) => (
 <tr id={`ticket-row-${t.id}`} key={t.id} className="text-center">
                       <td>{t.emp_id || "-"}</td>
                       <td>
@@ -577,6 +591,48 @@ const handleNotificationClick = (ticketId) => {
           </div>
         </div>
       </div>
+
+      {/* ✅ Pagination — Below Table (Bootstrap Style) */}
+{tickets.length > 0 && (
+  <nav className="mt-3">
+    <ul className="pagination justify-content-center">
+      {/* 🔹 Previous Button */}
+      <li className={`page-item ${currentPage === 1 ? "disabled" : ""}`}>
+        <button
+          className="page-link"
+          onClick={() => paginate(currentPage - 1)}
+        >
+          Previous
+        </button>
+      </li>
+
+      {/* 🔹 Numbered Page Buttons */}
+      {[...Array(totalPages)].map((_, i) => (
+        <li
+          key={i}
+          className={`page-item ${currentPage === i + 1 ? "active" : ""}`}
+        >
+          <button className="page-link" onClick={() => paginate(i + 1)}>
+            {i + 1}
+          </button>
+        </li>
+      ))}
+
+      {/* 🔹 Next Button */}
+      <li
+        className={`page-item ${currentPage === totalPages ? "disabled" : ""}`}
+      >
+        <button
+          className="page-link"
+          onClick={() => paginate(currentPage + 1)}
+        >
+          Next
+        </button>
+      </li>
+    </ul>
+  </nav>
+)}
+
 
 {/* ISSUE MODAL */}
 {showIssueModal && selectedTicket && (
