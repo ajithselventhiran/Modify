@@ -205,28 +205,28 @@ app.get("/api/employees/find", async (req, res) => {
 
 
 // ======================================================
-// User — Get Completed Tickets by Emp ID
+// User — Get ALL Tickets by Emp ID (any status)
 // ======================================================
-app.get("/api/tickets/completed", async (req, res) => {
+app.get("/api/tickets/status", async (req, res) => {
   try {
     const { emp_id } = req.query;
     if (!emp_id) return res.status(400).json({ message: "emp_id required" });
 
-    // Fetch completed tickets only
     const [rows] = await pool.query(
-      `SELECT id, issue_text, reporting_to, created_at, updated_at, status 
-       FROM tickets 
-       WHERE emp_id = ? AND status = 'COMPLETE'
+      `SELECT id, issue_text, reporting_to, created_at, updated_at, status
+       FROM tickets
+       WHERE emp_id = ?
        ORDER BY updated_at DESC`,
       [emp_id]
     );
 
     res.json(rows);
   } catch (e) {
-    console.error("❌ /api/tickets/completed error:", e);
-    res.status(500).json({ message: "Failed to load completed tickets" });
+    console.error("❌ /api/tickets/status error:", e);
+    res.status(500).json({ message: "Failed to load ticket data" });
   }
 });
+
 
 
 
@@ -324,22 +324,40 @@ app.get("/api/admin/tickets", auth, async (req, res) => {
 // ======================================================
 // 🔔 ADMIN — Notifications: overdue tickets
 // ======================================================
+// ======================================================
+// 🔔 ADMIN — Notifications: overdue tickets (with issue + technician name)
+// ======================================================
 app.get("/api/admin/notifications", auth, async (req, res) => {
   try {
     if (req.user.role !== "ADMIN")
       return res.status(403).json({ error: "Access denied" });
+
     const manager = req.user.display_name;
     const today = new Date().toISOString().split("T")[0];
+
     const [rows] = await pool.query(
-      `SELECT id, emp_id, full_name, end_date, status
-       FROM tickets
-       WHERE reporting_to=? 
-         AND end_date IS NOT NULL 
-         AND end_date < ?
-         AND status NOT IN ('COMPLETE','REJECTED')
-       ORDER BY end_date ASC`,
+      `
+      SELECT 
+        t.id,
+        t.emp_id,
+        t.full_name,
+        t.issue_text AS remarks,       -- 📝 show issue in notifications
+        t.assigned_to,                 -- technician username/fullname stored in ticket
+        tech.full_name AS assigned_to_name,  -- joined technician full name
+        t.end_date,
+        t.status
+      FROM tickets t
+      LEFT JOIN users tech 
+        ON tech.username = t.assigned_to OR tech.full_name = t.assigned_to
+      WHERE t.reporting_to = ?
+        AND t.end_date IS NOT NULL
+        AND t.end_date < ?
+        AND t.status NOT IN ('COMPLETE', 'REJECTED')
+      ORDER BY t.end_date ASC
+      `,
       [manager, today]
     );
+
     res.json(rows);
   } catch (err) {
     console.error("❌ Notifications error:", err);

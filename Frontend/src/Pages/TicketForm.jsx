@@ -443,7 +443,7 @@ export default function TicketForm() {
 
 
 
-      {/* ===================================================== */}
+{/* ===================================================== */}
 {/* Know Your Ticket Status Section */}
 {/* ===================================================== */}
 <div className="mt-5 pt-4 border-top">
@@ -456,6 +456,12 @@ export default function TicketForm() {
       placeholder="Enter your Employee ID"
       style={{ width: "250px" }}
       id="statusEmpId"
+      onChange={(e) => {
+        // 🧹 Clear table if input is empty
+        if (e.target.value.trim() === "") {
+          setCompletedTickets([]);
+        }
+      }}
     />
     <button
       className="btn btn-success"
@@ -463,18 +469,18 @@ export default function TicketForm() {
         const empInput = document.getElementById("statusEmpId").value.trim();
         if (!empInput) return toast.warning("Please enter Employee ID.");
 
-        // ✅ Ensure only logged-in employee can view their own data
+        // ✅ Allow only logged-in employee
         if (!emp || empInput !== emp.emp_id.toString()) {
           return toast.error("⚠️ You can only view your own ticket status!");
         }
 
         try {
-          const { data } = await axios.get(`${API}/api/tickets/completed`, {
+          const { data } = await axios.get(`${API}/api/tickets/status`, {
             params: { emp_id: empInput },
           });
 
           if (!data.length) {
-            toast.info("No completed tickets found yet.");
+            toast.info("No tickets found yet.");
             setCompletedTickets([]);
           } else {
             setCompletedTickets(data);
@@ -489,29 +495,39 @@ export default function TicketForm() {
   </div>
 
   {/* Tickets Table */}
-  {completedTickets && completedTickets.length > 0 && (
+  {emp && completedTickets.length > 0 && (
     <div className="table-responsive">
       <table className="table table-bordered table-sm table-striped text-center align-middle">
         <thead className="table-light">
           <tr>
-            <th>ID</th>
-            <th>Issue</th>
             <th>Admin</th>
-            <th>Created</th>
-            <th>Updated</th>
+            <th>Issue</th>
+            <th>Created (Date & Time)</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody>
           {completedTickets.map((t, i) => (
             <tr key={i}>
-              <td>{t.id}</td>
-              <td>{t.issue_text}</td>
               <td>{t.reporting_to}</td>
-              <td>{new Date(t.created_at).toLocaleDateString()}</td>
-              <td>{new Date(t.updated_at).toLocaleDateString()}</td>
+              <td>{t.issue_text}</td>
+              <td>{new Date(t.created_at).toLocaleString()}</td>
               <td>
-                <span className="badge bg-success">{t.status}</span>
+                <span
+                  className={`badge ${
+                    t.status === "COMPLETE"
+                      ? "bg-success"
+                      : t.status === "REJECTED"
+                      ? "bg-danger"
+                      : t.status === "INPROCESS"
+                      ? "bg-primary"
+                      : t.status === "ASSIGNED"
+                      ? "bg-warning text-dark"
+                      : "bg-secondary"
+                  }`}
+                >
+                  {t.status}
+                </span>
               </td>
             </tr>
           ))}
@@ -520,6 +536,7 @@ export default function TicketForm() {
     </div>
   )}
 </div>
+
 
     </>
   );

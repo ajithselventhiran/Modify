@@ -5,6 +5,7 @@ import "../Style/animations.css";
 
 
 
+
 const API = "http://localhost:5000"; // 🔗 Backend API
 
 export default function AdminDashboard() {
@@ -13,6 +14,10 @@ export default function AdminDashboard() {
   // 🔔 Notifications
 const [notifications, setNotifications] = useState([]);
 const [showNotifications, setShowNotifications] = useState(false);
+
+
+const [viewMode, setViewMode] = useState("ticket");
+
 
 
 const [showReminderModal, setShowReminderModal] = useState(false);
@@ -43,6 +48,7 @@ const [reminderTicket, setReminderTicket] = useState(null);
   const [endDate, setEndDate] = useState("");
   const [priority, setPriority] = useState("");
   const [remarks, setRemarks] = useState("");
+
 
   // ✅ Pagination States
 const [currentPage, setCurrentPage] = useState(1); // 👉 current page number
@@ -110,34 +116,49 @@ const loadNotifications = async () => {
 };
 
 
-// ✅ Scroll to ticket when clicked in notification
+// ✅ Scroll to ticket when clicked in notification (supports pagination)
 const handleNotificationClick = (ticketId) => {
   // Close notification popup
   setShowNotifications(false);
 
-  // Small delay to ensure close animation done
   setTimeout(() => {
-    // Remove any previous highlights
-    document.querySelectorAll(".highlight-ticket").forEach((r) =>
-      r.classList.remove("highlight-ticket")
-    );
+    // Remove previous highlights
+    document
+      .querySelectorAll(".highlight-ticket")
+      .forEach((r) => r.classList.remove("highlight-ticket"));
 
-    // Find the target ticket row
-    const row = document.getElementById(`ticket-row-${ticketId}`);
-    if (row) {
-      // Smooth scroll to that ticket
-      row.scrollIntoView({ behavior: "smooth", block: "center" });
+    // 🔹 Find the index of the ticket in full ticket list
+    const ticketIndex = tickets.findIndex((t) => t.id === ticketId);
+    if (ticketIndex === -1) return; // not found
 
-      // Add highlight + animation class
-      row.classList.add("highlight-ticket");
+    // 🔹 Calculate which page that ticket belongs to
+    const targetPage = Math.floor(ticketIndex / ticketsPerPage) + 1;
 
-      // Auto remove highlight after few seconds
+    // 🔹 If ticket is on another page, switch page first
+    if (currentPage !== targetPage) {
+      setCurrentPage(targetPage);
+
+      // Wait for new page to render, then scroll
       setTimeout(() => {
-        row.classList.remove("highlight-ticket");
-      }, 4000);
+        const row = document.getElementById(`ticket-row-${ticketId}`);
+        if (row) {
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+          row.classList.add("highlight-ticket");
+          setTimeout(() => row.classList.remove("highlight-ticket"), 4000);
+        }
+      }, 600);
+    } else {
+      // Same page → scroll directly
+      const row = document.getElementById(`ticket-row-${ticketId}`);
+      if (row) {
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+        row.classList.add("highlight-ticket");
+        setTimeout(() => row.classList.remove("highlight-ticket"), 4000);
+      }
     }
   }, 300);
 };
+
 
 
 
@@ -400,40 +421,78 @@ const paginate = (pageNumber) => setCurrentPage(pageNumber);
 {showNotifications && (
   <div
     className="position-absolute end-0 mt-3 me-3 bg-white shadow-lg rounded-3 p-3"
-    style={{ width: "320px", zIndex: 2000 }}
+    style={{
+      width: "340px",
+      zIndex: 2000,
+      color: "#212529", // ✅ Force dark text color
+    }}
   >
     <h6 className="fw-semibold mb-2 text-primary">
       Overdue Tickets ({notifications.length})
     </h6>
-    <div style={{ maxHeight: "250px", overflowY: "auto" }}>
+
+    <div style={{ maxHeight: "260px", overflowY: "auto" }}>
       {notifications.length === 0 ? (
         <p className="text-muted small text-center mb-0">
           No overdue tickets 🎉
         </p>
       ) : (
-      notifications.map((n) => (
-  <div
-    key={n.id}
-    className="border-bottom py-2 small"
-    style={{ cursor: "pointer" }}
-    onClick={() => handleNotificationClick(n.id)}
-  >
-    <strong>{n.full_name}</strong> — #{n.id}
-    <br />
-    <span className="text-danger fw-semibold">
-      End: {new Date(n.end_date).toLocaleDateString()}
-    </span>
-    <br />
-    <span className="text-muted">
-      {n.status} {n.assigned_to ? `— ${n.assigned_to}` : ""}
-    </span>
-  </div>
-))
+        notifications.map((n) => (
+          <div
+            key={n.id}
+            className="border-bottom py-2 small"
+            style={{
+              cursor: "pointer",
+              color: "#212529", // ✅ Text always visible on white background
+            }}
+            onClick={() => handleNotificationClick(n.id)}
+          >
+            {/* 🧾 Employee + Issue */}
+            <strong style={{ color: "#000" }}>{n.full_name}</strong> —{" "}
+            <span className="text-muted">
+              {n.remarks || "No issue mentioned"}
+            </span>
+            <br />
 
+            {/* 👨‍🔧 Technician + Status */}
+            <span className="d-block mt-1">
+              <strong style={{ color: "#000" }}>
+  {n.assigned_to_name || n.assigned_to || "Unassigned"}
+</strong>
+
+              —{" "}
+              <span
+                className={`badge ${
+                  n.status === "COMPLETE"
+                    ? "bg-success"
+                    : n.status === "REJECTED"
+                    ? "bg-danger"
+                    : n.status === "INPROCESS"
+                    ? "bg-warning text-dark"
+                    : n.status === "ASSIGNED"
+                    ? "bg-info text-dark"
+                    : "bg-secondary"
+                }`}
+              >
+                {n.status}
+              </span>
+            </span>
+
+            {/* 📅 End Date */}
+            <span className="text-danger fw-semibold d-block mt-1">
+              End:{" "}
+              {n.end_date
+                ? new Date(n.end_date).toLocaleDateString()
+                : "Not set"}
+            </span>
+          </div>
+        ))
       )}
     </div>
   </div>
 )}
+
+
 
       </div>
 
@@ -499,94 +558,109 @@ const paginate = (pageNumber) => setCurrentPage(pageNumber);
                   <th>Action</th>
                 </tr>
               </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan="8" className="text-center py-3 text-muted">
-                      Loading...
-                    </td>
-                  </tr>
-                ) : tickets.length === 0 ? (
-                  <tr>
-                    <td colSpan="8" className="text-center py-3 text-muted">
-                      No tickets found.
-                    </td>
-                  </tr>
-                ) : (
-                 currentTickets.map((t) => (
-<tr id={`ticket-row-${t.id}`} key={t.id} className="text-center">
-                      <td>{t.emp_id || "-"}</td>
-                      <td>
-                        <strong>{t.full_name}</strong>
-                        <br />
-                        <small className="text-muted">{t.username}</small>
-                      </td>
-                      <td>{t.department}</td>
-                      <td>{t.system_ip || "-"}</td>
-                      <td>
-                        <span
-                          className={`badge ${getStatusBadge(
-                            t.status
-                          )} px-3 py-2`}
-                        >
-                          {t.status || "Not Assigned"}
-                        </span>
-                      </td>
-                      <td>{t.assigned_to || "-"}</td>
-                      <td>
-                        <button
-                          className="btn btn-sm btn-primary"
-                          onClick={() => {
-                            setSelectedTicket(t);
-                            setShowIssueModal(true);
-                          }}
-                        >
-                          View
-                        </button>
-                      </td>
-<td>
-  <div className="d-flex justify-content-center gap-2 flex-wrap">
-    {/* 🔹 Show Remind only if overdue, not complete/rejected */}
-    {t.end_date &&
-    new Date(t.end_date) < new Date() &&
-    t.status !== "COMPLETE" &&
-    t.status !== "REJECTED" ? (
-      <button
-        className="btn btn-sm btn-info text-white"
-        onClick={() => {
-          setReminderTicket(t);
-          setShowReminderModal(true);
-        }}
-      >
-        Remind
-      </button>
-    ) : (
-      <>
-        {/* 🔸 Assign button */}
-        <button
-          className="btn btn-sm btn-warning"
-          disabled={t.status !== "NOT_ASSIGNED"}
-          onClick={() => {
-            setSelectedTicket(t);
-            setShowModal(true);
+             <tbody>
+  {loading ? (
+    <tr>
+      <td colSpan="8" className="text-center py-3 text-muted">
+        Loading...
+      </td>
+    </tr>
+  ) : tickets.length === 0 ? (
+    <tr>
+      <td colSpan="8" className="text-center py-3 text-muted">
+        No tickets found.
+      </td>
+    </tr>
+  ) : (
+    currentTickets.map((t) => {
+      // ✅ Row highlight conditions
+      const isOverdue =
+        t.end_date &&
+        new Date(t.end_date) < new Date() &&
+        !["COMPLETE", "REJECTED"].includes(t.status);
+      const isComplete = t.status === "COMPLETE";
+
+      return (
+        <tr
+          id={`ticket-row-${t.id}`}
+          key={t.id}
+          className={`text-center ${
+            isOverdue
+              ? "table-danger"
+              : isComplete
+              ? "table-success"
+              : ""
+          }`}
+          style={{
+            transition: "background-color 0.4s ease",
           }}
         >
-          Assign
-        </button>
+          <td>{t.emp_id || "-"}</td>
+          <td>
+            <strong>{t.full_name}</strong>
+            <br />
+            <small className="text-muted">{t.username}</small>
+          </td>
+          <td>{t.department}</td>
+          <td>{t.system_ip || "-"}</td>
+          <td>
+            <span
+              className={`badge ${getStatusBadge(t.status)} px-3 py-2`}
+            >
+              {t.status || "Not Assigned"}
+            </span>
+          </td>
+          <td>{t.assigned_to || "-"}</td>
+          <td>
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={() => {
+                setSelectedTicket(t);
+                setShowIssueModal(true);
+              }}
+            >
+              View
+            </button>
+          </td>
+          <td>
+            <div className="d-flex justify-content-center gap-2 flex-wrap">
+              {/* 🔹 Show Remind only if overdue, not complete/rejected */}
+              {t.end_date &&
+              new Date(t.end_date) < new Date() &&
+              t.status !== "COMPLETE" &&
+              t.status !== "REJECTED" ? (
+                <button
+                  className="btn btn-sm btn-info text-white"
+                  onClick={() => {
+                    setReminderTicket(t);
+                    setShowReminderModal(true);
+                  }}
+                >
+                  Remind
+                </button>
+              ) : (
+                <>
+                  {/* 🔸 Assign button */}
+                  <button
+                    className="btn btn-sm btn-warning"
+                    disabled={t.status !== "NOT_ASSIGNED"}
+                    onClick={() => {
+                      setSelectedTicket(t);
+                      setShowModal(true);
+                    }}
+                  >
+                    Assign
+                  </button>
+                </>
+              )}
+            </div>
+          </td>
+        </tr>
+      );
+    })
+  )}
+</tbody>
 
-      
-      </>
-    )}
-  </div>
-</td>
-
-
-
-
-                    </tr>
-                  ))
-                )}
-              </tbody>
             </table>
           </div>
         </div>
@@ -642,6 +716,7 @@ const paginate = (pageNumber) => setCurrentPage(pageNumber);
   >
     <div className="modal-dialog modal-dialog-centered">
       <div className="modal-content border-0 shadow-lg rounded-4">
+        {/* 🔹 Header */}
         <div className="modal-header bg-info text-white rounded-top-4">
           <h5 className="modal-title">
             Issue Details — {selectedTicket.emp_id}
@@ -652,32 +727,108 @@ const paginate = (pageNumber) => setCurrentPage(pageNumber);
           ></button>
         </div>
 
-        <div className="modal-body">
-          <p>
-            <strong>Employee:</strong> {selectedTicket.full_name}
-          </p>
-          <p>
-            <strong>Department:</strong> {selectedTicket.department}
-          </p>
-          <p>
-            <strong>IP Address:</strong> {selectedTicket.system_ip}
-          </p>
-          <hr />
-          <p>
-            <strong>Issue:</strong>
-            <br />
-            {selectedTicket.issue_text}
-          </p>
-          <hr />
-          <p>
-            <strong>Submitted On:</strong>{" "}
-            {selectedTicket.created_at
-              ? new Date(selectedTicket.created_at).toLocaleString()
-              : "Not Available"}
-          </p>
+        {/* 🔹 Toggle Buttons */}
+        <div className="d-flex justify-content-center gap-2 mt-3">
+          <button
+            className={`btn btn-sm fw-semibold ${
+              viewMode === "ticket"
+                ? "btn-primary text-white"
+                : "btn-outline-primary"
+            }`}
+            onClick={() => setViewMode("ticket")}
+          >
+            Ticket Info
+          </button>
+
+          <button
+            className={`btn btn-sm fw-semibold ${
+              viewMode === "assign"
+                ? "btn-primary text-white"
+                : "btn-outline-primary"
+            }`}
+            onClick={() => setViewMode("assign")}
+            disabled={selectedTicket.status === "NOT_ASSIGNED"}
+          >
+            Assign Info
+          </button>
         </div>
 
-        {/* ✅ Footer with Reject + Close buttons */}
+        {/* 🔹 Scrollable Body */}
+        <div
+          className="modal-body"
+          style={{
+            maxHeight: "65vh",
+            overflowY: "auto",
+          }}
+        >
+          {/* 🧾 Ticket Info Section */}
+          {viewMode === "ticket" && (
+            <>
+              <p>
+                <strong>Employee:</strong> {selectedTicket.full_name}
+              </p>
+              <p>
+                <strong>Department:</strong> {selectedTicket.department}
+              </p>
+              <p>
+                <strong>IP Address:</strong> {selectedTicket.system_ip}
+              </p>
+              <hr />
+              <p>
+                <strong>Issue:</strong>
+                <br />
+                {selectedTicket.issue_text}
+              </p>
+              <hr />
+              <p>
+                <strong>Submitted On:</strong>{" "}
+                {selectedTicket.created_at
+                  ? new Date(selectedTicket.created_at).toLocaleString()
+                  : "Not Available"}
+              </p>
+            </>
+          )}
+
+          {/* 🧑‍🔧 Assign Info Section */}
+          {viewMode === "assign" && selectedTicket.status !== "NOT_ASSIGNED" && (
+            <div
+              className="p-3 rounded-3"
+              style={{
+                background: "rgba(13, 110, 253, 0.08)",
+                border: "1px solid #b6d4fe",
+              }}
+            >
+              <h6 className="fw-bold text-primary mb-3">
+                Assignment Details
+              </h6>
+              <p>
+                <strong>Technician:</strong>{" "}
+                {selectedTicket.assigned_to || "—"}
+              </p>
+              <p>
+                <strong>Start Date:</strong>{" "}
+                {selectedTicket.start_date
+                  ? new Date(selectedTicket.start_date).toLocaleDateString()
+                  : "—"}
+              </p>
+              <p>
+                <strong>End Date:</strong>{" "}
+                {selectedTicket.end_date
+                  ? new Date(selectedTicket.end_date).toLocaleDateString()
+                  : "—"}
+              </p>
+              <p>
+                <strong>Priority:</strong> {selectedTicket.priority || "—"}
+              </p>
+              <p>
+                <strong>Remarks:</strong>{" "}
+                {selectedTicket.remarks ? selectedTicket.remarks : "—"}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* 🔹 Footer */}
         <div className="modal-footer d-flex justify-content-between">
           <button
             className="btn btn-danger"
@@ -700,6 +851,8 @@ const paginate = (pageNumber) => setCurrentPage(pageNumber);
     </div>
   </div>
 )}
+
+
 
 
       {/* ASSIGN MODAL */}

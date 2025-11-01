@@ -6,9 +6,10 @@ const API = "http://localhost:5000";
 export default function TechnicianDashboard() {
   const [tickets, setTickets] = useState([]);
   const [filter, setFilter] = useState("ALL");
+  const [dueFilter, setDueFilter] = useState("ALL_DUE");
   const [loading, setLoading] = useState(false);
   const [techName, setTechName] = useState("");
-  const [allTickets, setAllTickets] = useState([]); // ✅ keep full ticket list
+  const [allTickets, setAllTickets] = useState([]);
 
   const [counts, setCounts] = useState({
     ALL: 0,
@@ -19,6 +20,7 @@ export default function TechnicianDashboard() {
     REJECTED: 0,
   });
 
+  // 🧩 Modals + form states
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -42,7 +44,7 @@ export default function TechnicianDashboard() {
     setTechName(userData?.display_name || userData?.username || "Technician");
   }, []);
 
-  // ✅ Smart ticket loader with silent refresh support
+  // 🧩 Load Tickets
   const loadTickets = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -54,39 +56,68 @@ export default function TechnicianDashboard() {
       const data = await res.json();
       const validData = Array.isArray(data) ? data : [];
 
-      // ✅ Compare old vs new to prevent flicker
-      setAllTickets((prev) => {
-        const prevKey = prev.map((t) => `${t.id}-${t.status}`).join(",");
-        const newKey = validData.map((t) => `${t.id}-${t.status}`).join(",");
-        if (prevKey === newKey) return prev; // same data — no update
-        calculateCounts(validData);
-        applyFilter(validData, filter);
-        return validData;
+      // 🕒 Add daysLeft info
+      validData.forEach((t) => {
+        if (t.end_date) {
+          const end = new Date(t.end_date);
+          const today = new Date();
+          const diffDays = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+          if (diffDays > 0)
+            t.daysLeft = `${diffDays} day${diffDays > 1 ? "s" : ""} left`;
+          else if (diffDays === 0) t.daysLeft = "Due today";
+          else
+            t.daysLeft = `Overdue by ${Math.abs(diffDays)} day${
+              Math.abs(diffDays) > 1 ? "s" : ""
+            }`;
+        } else t.daysLeft = "—";
       });
+
+      setAllTickets(validData);
+      calculateCounts(validData);
+      applyFilter(validData, filter, dueFilter);
     } catch (err) {
       console.error("❌ Ticket load failed:", err);
-      setAllTickets([]);
-      setTickets([]);
-      setCounts({
-        ALL: 0,
-        ASSIGNED: 0,
-        NOT_STARTED: 0,
-        INPROCESS: 0,
-        COMPLETE: 0,
-        REJECTED: 0,
-      });
       showToast("danger", "Failed to load tickets");
     } finally {
       if (!silent) setLoading(false);
     }
   };
 
-  const applyFilter = (data, selectedFilter) => {
-    if (selectedFilter === "ALL") setTickets(data);
-    else
-      setTickets(
-        data.filter((t) => (t.status || "").toUpperCase() === selectedFilter)
+  // 🧩 Apply Filter
+  const applyFilter = (data, selectedFilter, selectedDueFilter = dueFilter) => {
+    let filtered = data;
+
+    if (selectedFilter !== "ALL") {
+      filtered = filtered.filter(
+        (t) => (t.status || "").toUpperCase() === selectedFilter
       );
+    }
+
+    const today = new Date().setHours(0, 0, 0, 0);
+    if (selectedDueFilter === "OVERDUE") {
+      filtered = filtered.filter(
+        (t) =>
+          t.end_date &&
+          new Date(t.end_date).setHours(0, 0, 0, 0) < today &&
+          t.status !== "COMPLETE"
+      );
+    } else if (selectedDueFilter === "DUE_TODAY") {
+      filtered = filtered.filter(
+        (t) =>
+          t.end_date &&
+          new Date(t.end_date).setHours(0, 0, 0, 0) === today &&
+          t.status !== "COMPLETE"
+      );
+    } else if (selectedDueFilter === "UPCOMING") {
+      filtered = filtered.filter(
+        (t) =>
+          t.end_date &&
+          new Date(t.end_date).setHours(0, 0, 0, 0) > today &&
+          t.status !== "COMPLETE"
+      );
+    }
+
+    setTickets(filtered);
   };
 
   const calculateCounts = (data) => {
@@ -110,28 +141,24 @@ export default function TechnicianDashboard() {
   };
 
   useEffect(() => {
-    applyFilter(allTickets, filter);
-  }, [filter, allTickets]);
+    applyFilter(allTickets, filter, dueFilter);
+  }, [filter, dueFilter, allTickets]);
 
-  // ✅ Auto-refresh (every 5 sec, only when data changes)
+  // 🧩 Auto refresh
   useEffect(() => {
     loadTickets(true);
-
     const interval = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        loadTickets(true); // silent refresh
-      }
+      if (document.visibilityState === "visible") loadTickets(true);
     }, 5000);
-
     return () => clearInterval(interval);
   }, []);
 
+  // 🧩 Update / Reject
   const updateStatus = async (id, newStatus, fixed_note = "") => {
     const token = localStorage.getItem("token");
     try {
       setMailLoading(true);
       setMailMessage(`Updating ticket to ${newStatus}...`);
-
       const res = await fetch(`${API}/api/technician/tickets/${id}/status`, {
         method: "PATCH",
         headers: {
@@ -140,10 +167,9 @@ export default function TechnicianDashboard() {
         },
         body: JSON.stringify({ status: newStatus, fixed_note }),
       });
-
       if (res.ok) {
-        await loadTickets();
         showToast("success", `Ticket updated to ${newStatus}`);
+        await loadTickets();
       } else {
         const data = await res.json();
         showToast("danger", data?.error || "Status update failed");
@@ -161,7 +187,6 @@ export default function TechnicianDashboard() {
     try {
       setMailLoading(true);
       setMailMessage("Rejecting ticket & sending mail...");
-
       const res = await fetch(`${API}/api/technician/tickets/${id}/reject`, {
         method: "PATCH",
         headers: {
@@ -174,9 +199,7 @@ export default function TechnicianDashboard() {
       if (res.ok) {
         showToast("success", "Ticket rejected and mail sent to Admin");
         await loadTickets();
-      } else {
-        showToast("danger", data.error || "Reject failed");
-      }
+      } else showToast("danger", data.error || "Reject failed");
     } catch (e) {
       showToast("danger", "Server error during reject");
     } finally {
@@ -184,6 +207,7 @@ export default function TechnicianDashboard() {
     }
   };
 
+  // 🧩 UI helpers
   const getStatusBadge = (status) => {
     const map = {
       ASSIGNED: "bg-warning text-dark",
@@ -252,23 +276,40 @@ export default function TechnicianDashboard() {
         ))}
       </div>
 
-      {/* FILTER BUTTONS */}
-      <div className="d-flex flex-wrap justify-content-center gap-3 mb-5">
+      {/* FILTERS */}
+      <div className="d-flex flex-wrap justify-content-center gap-3 mb-3">
         {statusOrder.map((s) => (
-          <div
+          <button
             key={s}
-            className="text-center"
-            style={{ width: "15%", minWidth: "120px" }}
+            className={`btn btn-sm fw-semibold ${
+              filter === s ? "btn-success" : "btn-outline-success"
+            }`}
+            onClick={() => setFilter(s)}
+            style={{ minWidth: "120px" }}
           >
-            <button
-              className={`btn btn-sm w-100 fw-semibold ${
-                filter === s ? "btn-success" : "btn-outline-success"
-              }`}
-              onClick={() => setFilter(s)}
-            >
-              {s} ({counts[s] || 0})
-            </button>
-          </div>
+            {s} ({counts[s] || 0})
+          </button>
+        ))}
+      </div>
+
+      {/* DUE DATE FILTERS */}
+      <div className="d-flex flex-wrap justify-content-center gap-3 mb-4">
+        {[
+          { key: "ALL_DUE", label: "All" },
+          { key: "OVERDUE", label: "Overdue" },
+          { key: "DUE_TODAY", label: "Due Today" },
+          { key: "UPCOMING", label: "Upcoming" },
+        ].map((d) => (
+          <button
+            key={d.key}
+            className={`btn btn-sm fw-semibold ${
+              dueFilter === d.key ? "btn-success" : "btn-outline-success"
+            }`}
+            onClick={() => setDueFilter(d.key)}
+            style={{ minWidth: "120px" }}
+          >
+            {d.label}
+          </button>
         ))}
       </div>
 
@@ -289,6 +330,7 @@ export default function TechnicianDashboard() {
                   <th>Assigned By</th>
                   <th>Start Date</th>
                   <th>End Date</th>
+                  <th>Days Left</th>
                   <th>Status</th>
                   <th>Remarks</th>
                   <th>Issue</th>
@@ -298,19 +340,28 @@ export default function TechnicianDashboard() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="7" className="text-center py-3 text-muted">
+                    <td colSpan="8" className="text-center py-3 text-muted">
                       Loading…
                     </td>
                   </tr>
                 ) : tickets.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="text-center py-3 text-muted">
+                    <td colSpan="8" className="text-center py-3 text-muted">
                       No tickets found.
                     </td>
                   </tr>
                 ) : (
                   tickets.map((t) => (
-                    <tr key={t.id} className="text-center">
+                    <tr
+                      key={t.id}
+                      className={`text-center ${
+                        t.end_date &&
+                        new Date(t.end_date) < new Date() &&
+                        t.status !== "COMPLETE"
+                          ? "table-danger"
+                          : ""
+                      }`}
+                    >
                       <td>{t.reporting_to || "—"}</td>
                       <td>
                         {t.start_date
@@ -321,6 +372,19 @@ export default function TechnicianDashboard() {
                         {t.end_date
                           ? new Date(t.end_date).toLocaleDateString("en-IN")
                           : "—"}
+                      </td>
+                      <td>
+                        <span
+                          className={`fw-semibold ${
+                            t.daysLeft.includes("Overdue")
+                              ? "text-danger"
+                              : t.daysLeft.includes("left")
+                              ? "text-success"
+                              : "text-warning"
+                          }`}
+                        >
+                          {t.daysLeft}
+                        </span>
                       </td>
                       <td>
                         <span
@@ -363,154 +427,136 @@ export default function TechnicianDashboard() {
         </div>
       </div>
 
-      {/* ACTION MODAL */}
-      {showActionModal && currentTicket && (
-        <div className="modal fade show d-block" tabIndex="-1">
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header bg-dark text-white">
-                <h5 className="modal-title">
-                  Actions — Ticket {currentTicket.id}
-                </h5>
-                <button
-                  className="btn-close"
-                  onClick={() => setShowActionModal(false)}
-                ></button>
-              </div>
-              <div className="modal-body d-flex flex-wrap gap-2 justify-content-center">
-                {/* 🔹 Not Started */}
-                {currentTicket.status === "ASSIGNED" ? (
-                  <button
-                    className="btn btn-info"
-                    onClick={() => {
-                      setShowActionModal(false);
-                      updateStatus(currentTicket.id, "NOT_STARTED");
-                    }}
-                  >
-                    Not Started
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn-outline-info"
-                    disabled
-                  >
-                    Not Started
-                  </button>
-                )}
-
-                {/* 🔹 In Process */}
-                {currentTicket.status === "NOT_STARTED" ? (
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => {
-                      setShowActionModal(false);
-                      updateStatus(currentTicket.id, "INPROCESS");
-                    }}
-                  >
-                    In Process
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn-outline-primary"
-                    disabled
-                  >
-                    In Process
-                  </button>
-                )}
-
-                {/* 🔹 Complete */}
-                {currentTicket.status === "INPROCESS" ? (
-                  <button
-                    className="btn btn-success"
-                    onClick={() => {
-                      setShowActionModal(false);
-                      setShowCompleteModal(true);
-                    }}
-                  >
-                    Complete
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn-outline-success"
-                    disabled
-                  >
-                    Complete
-                  </button>
-                )}
-
-                {/* 🔹 Reject */}
-                {!["COMPLETE", "REJECTED"].includes(currentTicket.status) ? (
-                  <button
-                    className="btn btn-danger"
-                    onClick={() => {
-                      setShowActionModal(false);
-                      setShowRejectModal(true);
-                    }}
-                  >
-                    Reject
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn-outline-danger"
-                    disabled
-                  >
-                    Reject
-                  </button>
-                )}
-              </div>
-              <div className="modal-footer">
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setShowActionModal(false)}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
+  {/* ACTION MODAL */}
+{showActionModal && currentTicket && (
+  <div className="modal fade show d-block" tabIndex="-1">
+    <div className="modal-dialog modal-dialog-centered">
+      <div className="modal-content">
+        <div className="modal-header bg-dark text-white">
+          <h5 className="modal-title">
+            Actions — Ticket {currentTicket.id}
+          </h5>
+          <button
+            className="btn-close"
+            onClick={() => setShowActionModal(false)}
+          ></button>
         </div>
-      )}
 
-      {/* VIEW / COMPLETE / REJECT MODALS (same as before) */}
-      {showDetailModal && currentTicket && (
-        <div className="modal fade show d-block" tabIndex="-1">
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header bg-secondary text-white">
-                <h5 className="modal-title">Ticket Details</h5>
-                <button
-                  className="btn-close"
-                  onClick={() => setShowDetailModal(false)}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <p>
-                  <strong>Assigned By:</strong> {currentTicket.reporting_to}
-                </p>
-                <p>
-                  <strong>Issue:</strong> {currentTicket.issue_text}
-                </p>
-                <p>
-                  <strong>Status:</strong> {currentTicket.status}
-                </p>
-              </div>
-              <div className="modal-footer">
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setShowDetailModal(false)}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
+        <div className="modal-body d-flex flex-wrap gap-2 justify-content-center">
+          {/* 🔹 Not Started */}
+          {currentTicket.status === "ASSIGNED" ? (
+            <button
+              className="btn btn-info"
+              onClick={() => {
+                setShowActionModal(false);
+                updateStatus(currentTicket.id, "NOT_STARTED");
+              }}
+            >
+              Not Started
+            </button>
+          ) : (
+            <button className="btn btn-outline-info" disabled>
+              Not Started
+            </button>
+          )}
+
+          {/* 🔹 In Process */}
+          {currentTicket.status === "NOT_STARTED" ? (
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setShowActionModal(false);
+                updateStatus(currentTicket.id, "INPROCESS");
+              }}
+            >
+              In Process
+            </button>
+          ) : (
+            <button className="btn btn-outline-primary" disabled>
+              In Process
+            </button>
+          )}
+
+          {/* 🔹 Complete */}
+          {currentTicket.status === "INPROCESS" ? (
+            <button
+              className="btn btn-success"
+              onClick={() => {
+                setShowActionModal(false);
+                setShowCompleteModal(true);
+              }}
+            >
+              Complete
+            </button>
+          ) : (
+            <button className="btn btn-outline-success" disabled>
+              Complete
+            </button>
+          )}
         </div>
-      )}
 
+        <div className="modal-footer">
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowActionModal(false)}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+
+   {/* VIEW MODAL */}
+{showDetailModal && currentTicket && (
+  <div className="modal fade show d-block" tabIndex="-1">
+    <div className="modal-dialog modal-dialog-centered">
+      <div className="modal-content">
+        <div className="modal-header bg-secondary text-white">
+          <h5 className="modal-title">Ticket Details</h5>
+          <button
+            className="btn-close"
+            onClick={() => setShowDetailModal(false)}
+          ></button>
+        </div>
+
+        <div className="modal-body">
+          <p><strong>Assigned By:</strong> {currentTicket.reporting_to}</p>
+          <p><strong>Employee:</strong> {currentTicket.full_name}</p>
+          <p><strong>Department:</strong> {currentTicket.department}</p>
+          <p><strong>Issue:</strong> {currentTicket.issue_text}</p>
+          <p><strong>Status:</strong> {currentTicket.status}</p>
+        </div>
+
+        {/* 🔹 Footer with Reject + Close */}
+        <div className="modal-footer d-flex justify-content-between">
+          <button
+            className="btn btn-danger"
+            disabled={["REJECTED", "COMPLETE"].includes(currentTicket.status)}
+            onClick={() => {
+              setShowDetailModal(false);
+              setShowRejectModal(true);
+            }}
+          >
+            Reject
+          </button>
+
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowDetailModal(false)}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+
+      {/* COMPLETE MODAL */}
       {showCompleteModal && (
         <div className="modal fade show d-block" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
@@ -554,6 +600,7 @@ export default function TechnicianDashboard() {
         </div>
       )}
 
+      {/* REJECT MODAL */}
       {showRejectModal && (
         <div className="modal fade show d-block" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
@@ -605,7 +652,7 @@ export default function TechnicianDashboard() {
         </div>
       )}
 
-      {/* LOADER + TOAST */}
+      {/* LOADER */}
       {mailLoading && (
         <div
           className="position-fixed top-0 start-0 w-100 h-100 d-flex flex-column justify-content-center align-items-center"
@@ -620,6 +667,7 @@ export default function TechnicianDashboard() {
         </div>
       )}
 
+      {/* TOAST */}
       {toast.show && (
         <div
           className={`toast align-items-center text-white bg-${toast.type} position-fixed top-0 end-0 m-3 show`}
