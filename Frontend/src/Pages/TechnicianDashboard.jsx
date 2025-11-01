@@ -43,82 +43,97 @@ export default function TechnicianDashboard() {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
     setTechName(userData?.display_name || userData?.username || "Technician");
   }, []);
+// 🧩 Load Tickets (Admin-style refresh, avoids unnecessary re-render)
+const loadTickets = async (silent = false) => {
+  if (!silent) setLoading(true);
+  try {
+    const token = localStorage.getItem("token");
+    const res = await fetch(`${API}/api/technician/my-tickets`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error("Failed to load tickets");
+    const data = await res.json();
+    const validData = Array.isArray(data) ? data : [];
 
-  // 🧩 Load Tickets
-  const loadTickets = async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API}/api/technician/my-tickets`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to load tickets");
-      const data = await res.json();
-      const validData = Array.isArray(data) ? data : [];
+    // 🕒 Add daysLeft info
+    validData.forEach((t) => {
+      if (t.end_date) {
+        const end = new Date(t.end_date);
+        const today = new Date();
+        const diffDays = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+        if (diffDays > 0)
+          t.daysLeft = `${diffDays} day${diffDays > 1 ? "s" : ""} left`;
+        else if (diffDays === 0) t.daysLeft = "Due today";
+        else
+          t.daysLeft = `Overdue by ${Math.abs(diffDays)} day${
+            Math.abs(diffDays) > 1 ? "s" : ""
+          }`;
+      } else t.daysLeft = "—";
+    });
 
-      // 🕒 Add daysLeft info
-      validData.forEach((t) => {
-        if (t.end_date) {
-          const end = new Date(t.end_date);
-          const today = new Date();
-          const diffDays = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
-          if (diffDays > 0)
-            t.daysLeft = `${diffDays} day${diffDays > 1 ? "s" : ""} left`;
-          else if (diffDays === 0) t.daysLeft = "Due today";
-          else
-            t.daysLeft = `Overdue by ${Math.abs(diffDays)} day${
-              Math.abs(diffDays) > 1 ? "s" : ""
-            }`;
-        } else t.daysLeft = "—";
-      });
+    // ✅ Compare with previous list before updating (avoid flicker)
+    setAllTickets((prev) => {
+      const prevKey = prev.map((t) => `${t.id}-${t.status}`).join(",");
+      const newKey = validData.map((t) => `${t.id}-${t.status}`).join(",");
+      if (prevKey === newKey) return prev; // no change → no update
+      return validData;
+    });
 
-      setAllTickets(validData);
-      calculateCounts(validData);
-      applyFilter(validData, filter, dueFilter);
-    } catch (err) {
-      console.error("❌ Ticket load failed:", err);
-      showToast("danger", "Failed to load tickets");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
+    calculateCounts(validData);
+    applyFilter(validData, filter, dueFilter);
+  } catch (err) {
+    console.error("❌ Ticket load failed:", err);
+    showToast("danger", "Failed to load tickets");
+  } finally {
+    if (!silent) setLoading(false);
+  }
+};
 
-  // 🧩 Apply Filter
-  const applyFilter = (data, selectedFilter, selectedDueFilter = dueFilter) => {
-    let filtered = data;
+// 🧩 Apply Filter (Admin-style — skip update if no change)
+const applyFilter = (data, selectedFilter, selectedDueFilter = dueFilter) => {
+  let filtered = data;
 
-    if (selectedFilter !== "ALL") {
-      filtered = filtered.filter(
-        (t) => (t.status || "").toUpperCase() === selectedFilter
-      );
-    }
+  // Filter by status
+  if (selectedFilter !== "ALL") {
+    filtered = filtered.filter(
+      (t) => (t.status || "").toUpperCase() === selectedFilter
+    );
+  }
 
-    const today = new Date().setHours(0, 0, 0, 0);
-    if (selectedDueFilter === "OVERDUE") {
-      filtered = filtered.filter(
-        (t) =>
-          t.end_date &&
-          new Date(t.end_date).setHours(0, 0, 0, 0) < today &&
-          t.status !== "COMPLETE"
-      );
-    } else if (selectedDueFilter === "DUE_TODAY") {
-      filtered = filtered.filter(
-        (t) =>
-          t.end_date &&
-          new Date(t.end_date).setHours(0, 0, 0, 0) === today &&
-          t.status !== "COMPLETE"
-      );
-    } else if (selectedDueFilter === "UPCOMING") {
-      filtered = filtered.filter(
-        (t) =>
-          t.end_date &&
-          new Date(t.end_date).setHours(0, 0, 0, 0) > today &&
-          t.status !== "COMPLETE"
-      );
-    }
+  // Filter by due date type
+  const today = new Date().setHours(0, 0, 0, 0);
+  if (selectedDueFilter === "OVERDUE") {
+    filtered = filtered.filter(
+      (t) =>
+        t.end_date &&
+        new Date(t.end_date).setHours(0, 0, 0, 0) < today &&
+        t.status !== "COMPLETE"
+    );
+  } else if (selectedDueFilter === "DUE_TODAY") {
+    filtered = filtered.filter(
+      (t) =>
+        t.end_date &&
+        new Date(t.end_date).setHours(0, 0, 0, 0) === today &&
+        t.status !== "COMPLETE"
+    );
+  } else if (selectedDueFilter === "UPCOMING") {
+    filtered = filtered.filter(
+      (t) =>
+        t.end_date &&
+        new Date(t.end_date).setHours(0, 0, 0, 0) > today &&
+        t.status !== "COMPLETE"
+    );
+  }
 
-    setTickets(filtered);
-  };
+  // ✅ Update only if list actually changed
+  setTickets((prev) => {
+    const prevKey = prev.map((t) => `${t.id}-${t.status}`).join(",");
+    const newKey = filtered.map((t) => `${t.id}-${t.status}`).join(",");
+    if (prevKey === newKey) return prev; // avoid flicker
+    return filtered;
+  });
+};
+
 
   const calculateCounts = (data) => {
     const grouped = data.reduce(
@@ -145,13 +160,17 @@ export default function TechnicianDashboard() {
   }, [filter, dueFilter, allTickets]);
 
   // 🧩 Auto refresh
-  useEffect(() => {
-    loadTickets(true);
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") loadTickets(true);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+useEffect(() => {
+  loadTickets(true);
+  const interval = setInterval(() => {
+    if (document.visibilityState === "visible") {
+      loadTickets(true);
+    }
+  }, 5000);
+
+  return () => clearInterval(interval);
+}, [filter, dueFilter]);
+
 
   // 🧩 Update / Reject
   const updateStatus = async (id, newStatus, fixed_note = "") => {

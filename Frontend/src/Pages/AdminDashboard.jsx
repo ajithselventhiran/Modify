@@ -16,6 +16,32 @@ const [notifications, setNotifications] = useState([]);
 const [showNotifications, setShowNotifications] = useState(false);
 
 
+// ✅ Seen notifications stored in localStorage (so count reduces permanently)
+const [ackedIds, setAckedIds] = useState(() => {
+  try {
+    return new Set(JSON.parse(localStorage.getItem("ackedOverdue") || "[]"));
+  } catch {
+    return new Set();
+  }
+});
+
+const persistAcked = (setObj) => {
+  localStorage.setItem("ackedOverdue", JSON.stringify(Array.from(setObj)));
+};
+
+const ackNotification = (id) => {
+  setAckedIds((prev) => {
+    const next = new Set(prev);
+    next.add(id);
+    persistAcked(next);
+    return next;
+  });
+  // remove clicked notification from dropdown
+  setNotifications((prev) => prev.filter((n) => n.id !== id));
+};
+
+
+
 const [viewMode, setViewMode] = useState("ticket");
 
 
@@ -102,14 +128,20 @@ const playSuccessSound = () => {
   };
 
 
-  // ✅ Load Notifications (Overdue tickets)
+// ✅ Load Notifications (Overdue tickets)
 const loadNotifications = async () => {
   try {
     const res = await fetch(`${API}/api/admin/notifications`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const data = await res.json();
-    setNotifications(Array.isArray(data) ? data : []);
+
+    // filter out already viewed notifications
+    const seen = new Set(
+      JSON.parse(localStorage.getItem("ackedOverdue") || "[]")
+    );
+    const list = Array.isArray(data) ? data.filter((n) => !seen.has(n.id)) : [];
+    setNotifications(list);
   } catch (err) {
     console.error("❌ Notification load failed:", err);
   }
@@ -445,7 +477,11 @@ const paginate = (pageNumber) => setCurrentPage(pageNumber);
               cursor: "pointer",
               color: "#212529", // ✅ Text always visible on white background
             }}
-            onClick={() => handleNotificationClick(n.id)}
+           onClick={() => {
+  ackNotification(n.id);          // ✅ remove & reduce count
+  handleNotificationClick(n.id);  // ✅ scroll to ticket
+}}
+
           >
             {/* 🧾 Employee + Issue */}
             <strong style={{ color: "#000" }}>{n.full_name}</strong> —{" "}
